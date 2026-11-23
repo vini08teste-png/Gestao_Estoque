@@ -100,7 +100,7 @@ export async function TeamOverview({ scope, people, awaitingReceipt }: {
       <div className="team-member-role">
         <p>{person.jobTitle} · {person.department}{person.supervisor && ` · Encarregado: ${person.supervisor.name}`}</p>
         {person.active && <div className="row-actions">
-        <Link className="text-action" href={`/${scope.companyId}/entregas?edit=ficha&colaborador=${encodeURIComponent(person.id)}`}>Registrar ficha de papel</Link>
+        <Link className="text-action" href={`/${scope.companyId}/entregas?edit=ficha&colaborador=${encodeURIComponent(person.id)}`}>Registrar entregas anteriores</Link>
         {canGrantSupervisorAccess(scope) && (
           person.scope?.active && person.scope.role === "SUPERVISOR" ? <span className="badge active">Perfil Encarregado</span> :
           (!person.scope || (person.scope.active && person.scope.role === "EMPLOYEE")) &&

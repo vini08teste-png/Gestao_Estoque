@@ -45,7 +45,7 @@ O aplicativo usa Next.js com App Router, React e TypeScript. As páginas protegi
 | `Equipment`, `EquipmentLot`, `Stock` | Entradas de um item são agrupadas internamente por validade. A chave do saldo inclui empresa, almoxarifado e lote interno. A tela soma por almoxarifado e item. |
 | `ExpectedItem` | Vincula um item e uma quantidade a uma função, uma unidade ou à combinação dos dois dentro da empresa. |
 | `StockMinimum` | Guarda o mínimo por empresa, unidade e item. O padrão é de cinco unidades. |
-| `StockMovement`, `Delivery` | Movimentos positivos registram entradas. Uma entrega pelo almoxarifado pode gerar mais de um movimento negativo. A ficha de papel grava o registro com almoxarifado e lote vazios e preserva o estoque. |
+| `StockMovement`, `Delivery` | Movimentos positivos registram entradas. Uma entrega pelo almoxarifado pode gerar mais de um movimento negativo. O registro de uma entrega anterior preserva o estoque. |
 | `EquipmentRequest`, `ApprovalRule` | O pedido guarda solicitante, unidade, item ou descrição e situação. As regras guardam exigência de aprovação por unidade e, opcionalmente, por item. |
 | `DeliveryReceipt`, `DeliveryRetirement` | Registram a confirmação do destinatário e a retirada de uso com autor e horário. |
 | `DeliveryProof`, `ReplacementPhoto` | Guardam bytes, formato e hash dos anexos, vinculados à entrega ou à solicitação. |

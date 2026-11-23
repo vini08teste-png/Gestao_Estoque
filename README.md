@@ -55,7 +55,7 @@ Para terceiros, informe o empregador em **Empresa terceirizada**, por exemplo, L
 
 Use **Não encontrei o item** para descrever o que precisa. Um operador vincula o pedido a um item ativo do catálogo, e o pedido segue para atendimento com a configuração atual.
 
-O fluxo registra a data da entrega e, quando o colaborador confirma, a data do recebimento. O CA é cadastrado nos EPIs. A validade física do produto pode ser informada na entrada. Para registrar itens que o colaborador já recebeu, use **Histórico → Registrar ficha de papel**. O PDF ou imagem do comprovante fica no PostgreSQL e pode ser baixado por usuários com acesso à entrega.
+O fluxo registra a data da entrega e, quando o colaborador confirma, a data do recebimento. O CA é cadastrado nos EPIs. A validade física do produto pode ser informada na entrada. Para registrar itens já recebidos, use **Histórico → Registrar entregas anteriores**. O PDF ou imagem do comprovante fica no PostgreSQL e pode ser baixado por usuários com acesso à entrega.
 
 Em **Meus itens**, o destinatário pode retirar o item de uso com motivo e justificativa ou solicitar uma troca. A retirada fica no histórico e a troca segue o fluxo das solicitações. O pedido de troca aceita texto, foto em JPG, PNG ou WebP de até 3 MB, ou ambos. O destinatário e quem tem acesso à solicitação podem ver a foto em **Ver detalhes**.
 

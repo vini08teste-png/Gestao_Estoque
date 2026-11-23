@@ -12,6 +12,7 @@ import { employeesWhere, unitsWhere } from "@/lib/directory";
 import { canSetStockMinimum, handlesStock, hasPersonalEquipment, ownEmployeeId, requestWhere } from "@/lib/equipment-access";
 import { brazilDay, jobTitleKey, retirementLabels, todayInBrazil } from "@/lib/equipment";
 import { text, type FormResult } from "@/lib/forms";
+import { finishSave } from "@/lib/form-navigation";
 import { availableLotWhere } from "@/lib/stock-availability";
 
 class InputError extends Error {}
@@ -67,22 +68,45 @@ async function mutate(companyId: string, allowed: (scope: AccessScope) => boolea
   return { success: "Alterações salvas." };
 }
 
+function equipmentValues(data: FormData) {
+  const category = text(data, "category");
+  if (category !== "EPI" && category !== "UNIFORM") return invalid("Selecione o tipo de item.");
+  return {
+    name: field(data, "name", "Nome"),
+    category: category as ItemCategory,
+    makerModel: field(data, "makerModel", "Fabricante e modelo"),
+    certificate: category === "EPI" ? field(data, "certificate", "CA", 60) : null,
+    caExpiresAt: category === "EPI" ? parseDay(text(data, "caExpiresAt")) : null,
+    notes: field(data, "notes", "Observações", 500, true),
+  };
+}
+
+async function resolveEquipment(tx: Prisma.TransactionClient, companyId: string, data: FormData, existingId: string | null) {
+  if (existingId === "") return invalid("Selecione um item ativo desta empresa.");
+  if (existingId === null && data.get("createEquipment") === "on") {
+    const values = equipmentValues(data);
+    if (await tx.equipment.findFirst({
+      where: { companyId, active: true, category: values.category, certificate: values.certificate,
+        name: { equals: values.name, mode: "insensitive" }, makerModel: { equals: values.makerModel, mode: "insensitive" } },
+      select: { id: true },
+    })) return invalid("Este item já está cadastrado. Use a opção Escolher item existente.");
+    const item = await tx.equipment.create({ data: { companyId, ...values }, select: { id: true } });
+    return item.id;
+  }
+  const id = existingId ?? field(data, "equipment", "Item");
+  if (!await tx.equipment.findUnique({ where: { companyId_id: { companyId, id }, active: true }, select: { id: true } })) {
+    return invalid("Selecione um item ativo desta empresa.");
+  }
+  return id;
+}
+
 export async function saveEquipment(companyId: string, id: string | null, _: FormResult, data: FormData) {
-  return mutate(companyId, id ? canAdminister : handlesStock, async (tx) => {
-    const category = text(data, "category");
-    if (category !== "EPI" && category !== "UNIFORM") return invalid("Selecione o tipo de item.");
-    const values = {
-      name: field(data, "name", "Nome"),
-      category: category as ItemCategory,
-      makerModel: field(data, "makerModel", "Fabricante e modelo"),
-      certificate: category === "EPI" ? field(data, "certificate", "CA", 60) : null,
-      caExpiresAt: category === "EPI" ? parseDay(text(data, "caExpiresAt")) : null,
-      notes: field(data, "notes", "Observações", 500, true),
-      active: data.get("active") === "on",
-    };
+  const result = await mutate(companyId, id ? canAdminister : handlesStock, async (tx) => {
+    const values = { ...equipmentValues(data), active: data.get("active") === "on" };
     if (id) await tx.equipment.update({ where: { companyId_id: { companyId, id } }, data: values });
     else await tx.equipment.create({ data: { companyId, ...values } });
   });
+  return finishSave(result, data, `/${companyId}/epis`);
 }
 
 export async function saveWarehouse(companyId: string, _: FormResult, data: FormData) {
@@ -92,24 +116,21 @@ export async function saveWarehouse(companyId: string, _: FormResult, data: Form
     if (!unit) return invalid("Selecione uma unidade ativa no seu escopo.");
     await tx.warehouse.create({ data: { companyId, unitId, name: field(data, "name", "Nome") } });
   });
-  if (result.success) redirect(`/${companyId}/estoque`);
-  return result;
+  return finishSave(result, data, `/${companyId}/estoque`);
 }
 
-export async function addStock(companyId: string, _: FormResult, data: FormData) {
-  return mutate(companyId, handlesStock, async (tx, scope, actorId) => {
+export async function addStock(companyId: string, movementId: string, _: FormResult, data: FormData) {
+  const result = await mutate(companyId, handlesStock, async (tx, scope, actorId) => {
+    if (await tx.stockMovement.findUnique({ where: { id: movementId, companyId, actorId }, select: { id: true } })) return;
     const warehouseId = field(data, "warehouse", "Almoxarifado");
-    const equipmentId = field(data, "equipment", "Item");
     const quantity = count(data);
     const warehouse = await tx.warehouse.findFirst({
       where: { companyId, id: warehouseId, active: true, unit: { ...unitsWhere(scope), active: true } },
     });
     if (!warehouse) return invalid("Selecione um almoxarifado ativo da sua unidade.");
-    if (!await tx.equipment.findUnique({ where: { companyId_id: { companyId, id: equipmentId }, active: true } })) {
-      return invalid("Selecione um item ativo desta empresa.");
-    }
     const date = text(data, "expiresAt");
     const expiresAt = date ? parseDay(date) : null;
+    const equipmentId = await resolveEquipment(tx, companyId, data, null);
     const code = `@ESTOQUE:${date || "SEM-VALIDADE"}`;
     const lot = await tx.equipmentLot.upsert({
       where: { companyId_equipmentId_code: { companyId, equipmentId, code } },
@@ -122,12 +143,14 @@ export async function addStock(companyId: string, _: FormResult, data: FormData)
     await tx.stock.upsert({
       where: { companyId_warehouseId_lotId: key }, create: { ...key, quantity }, update: { quantity: { increment: quantity } },
     });
-    await tx.stockMovement.create({ data: { ...key, actorId, delta: quantity } });
+    await tx.stockMovement.create({ data: { ...key, id: movementId, actorId, delta: quantity } });
   });
+  if (!result.success) return result;
+  return finishSave({ success: "Entrada registrada." }, data, `/${companyId}/estoque?entrada=1`);
 }
 
 export async function saveStockMinimum(companyId: string, _: FormResult, data: FormData) {
-  return mutate(companyId, canSetStockMinimum, async (tx, scope) => {
+  const result = await mutate(companyId, canSetStockMinimum, async (tx, scope) => {
     const unitId = field(data, "unit", "Unidade");
     const equipmentId = field(data, "equipment", "Item");
     const raw = text(data, "quantity");
@@ -141,6 +164,7 @@ export async function saveStockMinimum(companyId: string, _: FormResult, data: F
     const key = { companyId, unitId, equipmentId };
     await tx.stockMinimum.upsert({ where: { companyId_unitId_equipmentId: key }, create: { ...key, quantity }, update: { quantity } });
   });
+  return finishSave(result, data, `/${companyId}/estoque?acao=minimos#minimos-cadastrados`);
 }
 
 export async function resetStockMinimum(companyId: string, unitId: string, equipmentId: string, _: FormResult) {
@@ -150,7 +174,7 @@ export async function resetStockMinimum(companyId: string, unitId: string, equip
 }
 
 export async function saveExpectedItem(companyId: string, _: FormResult, data: FormData) {
-  return mutate(companyId, canAdminister, async (tx) => {
+  const result = await mutate(companyId, canAdminister, async (tx) => {
     const unitId = field(data, "unit", "Unidade", 120, true) || null;
     const jobTitle = jobTitleKey(field(data, "jobTitle", "Função", 120, true));
     const equipmentId = field(data, "equipment", "Item");
@@ -167,6 +191,7 @@ export async function saveExpectedItem(companyId: string, _: FormResult, data: F
     if (existing) await tx.expectedItem.update({ where: { companyId_id: { companyId, id: existing.id } }, data: { quantity } });
     else await tx.expectedItem.create({ data: { ...target, quantity } });
   });
+  return finishSave(result, data, `/${companyId}/itens-esperados#itens-configurados`);
 }
 
 export async function removeExpectedItem(companyId: string, id: string, _: FormResult, _data: FormData) {
@@ -176,7 +201,7 @@ export async function removeExpectedItem(companyId: string, id: string, _: FormR
 }
 
 export async function saveRule(companyId: string, _: FormResult, data: FormData) {
-  return mutate(companyId, canAdminister, async (tx) => {
+  const result = await mutate(companyId, canAdminister, async (tx) => {
     const unitId = field(data, "unit", "Unidade");
     const equipmentId = field(data, "equipment", "EPI", 120, true) || null;
     const previous = await tx.approvalRule.findFirst({ where: { companyId, unitId, equipmentId } });
@@ -184,6 +209,7 @@ export async function saveRule(companyId: string, _: FormResult, data: FormData)
     if (previous) await tx.approvalRule.update({ where: { id: previous.id }, data: { required } });
     else await tx.approvalRule.create({ data: { companyId, unitId, equipmentId, required } });
   });
+  return finishSave(result, data, `/${companyId}/regras-aprovacao#regras-cadastradas`);
 }
 
 const supervisor = (scope: AccessScope) => scope.company.requestApprovalEnabled && scope.role === "SUPERVISOR" &&
@@ -329,10 +355,7 @@ export async function registerDelivery(companyId: string, id: string, requestId:
     const employeeId = request?.employeeId ?? field(data, "employee", "Colaborador");
     const employee = await tx.employee.findFirst({ where: { ...employeesWhere(scope), id: employeeId, active: true, unit: { active: true } } });
     if (!employee || (request && request.unitId !== employee.unitId)) return invalid("O colaborador não está ativo na unidade da solicitação ou no seu escopo.");
-    const equipmentId = request ? request.equipmentId : field(data, "equipment", "Item");
-    if (!equipmentId || !await tx.equipment.findUnique({ where: { companyId_id: { companyId, id: equipmentId }, active: true } })) {
-      return invalid("Selecione um item ativo desta empresa.");
-    }
+    const equipmentId = await resolveEquipment(tx, companyId, data, request ? request.equipmentId ?? "" : paper ? null : field(data, "equipment", "Item"));
     const today = todayInBrazil();
     const quantity = request?.quantity ?? count(data);
     const deliveredAt = parseDay(text(data, "deliveredAt"));
@@ -373,9 +396,10 @@ export async function registerDelivery(companyId: string, id: string, requestId:
       await tx.equipmentEvent.create({ data: { companyId, subjectId: request.id, actorId, kind: "COMPLETED" } });
     }
   });
-  if (result.success) redirect(`/${companyId}/entregas?${paper ?
-    `registrada=ficha&colaborador=${encodeURIComponent(text(data, "employee"))}` : "registrada=1"}`);
-  return result;
+  if (!result.success) return result;
+  if (paper) return { success: "Entrega anterior registrada." };
+  if (data.get("continue") === "on" && !requestId) return { success: "Entrega registrada e saldo atualizado." };
+  redirect(`/${companyId}/entregas?registrada=1`);
 }
 
 export async function confirmReceipt(companyId: string, deliveryId: string, _: FormResult) {

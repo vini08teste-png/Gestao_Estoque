@@ -288,6 +288,10 @@ tbody tr + tr { border-top: 1px solid var(--line); }
 .form-stack { display: grid; gap: 14px; }
 .editor .form-stack { padding: 20px; }
 .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; align-items: start; }
+.equipment-picker { display: grid; gap: 8px; }
+.equipment-picker > .text-action { justify-self: start; padding: 7px 0; cursor: pointer; }
+.inline-item-fields { min-width: 0; border: 1px solid var(--line); border-radius: 8px; padding: 12px; }
+.inline-item-fields legend { padding: 0 6px; font-weight: 650; }
 .field { display: grid; gap: 6px; min-width: 0; align-content: start; font-size: .875rem; font-weight: 650; }
 .field input, .field select { min-width: 0; font-weight: 400; }
 .field input[readonly] { background: #f6f7fa; }

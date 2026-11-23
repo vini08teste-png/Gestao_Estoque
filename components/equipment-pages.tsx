@@ -8,6 +8,7 @@ import {
 } from "@/app/equipment-actions";
 import { ActionForm } from "@/components/action-form";
 import { DeliveryFields } from "@/components/delivery-fields";
+import { EquipmentPicker } from "@/components/equipment-picker";
 import { ItemCategoryFields } from "@/components/item-category-fields";
 import { RequestEquipmentField } from "@/components/request-equipment-field";
 import { ReplacementPhotoField } from "@/components/replacement-photo-field";
@@ -81,7 +82,7 @@ export async function Catalog({ scope, edit }: { scope: AccessScope; edit: strin
     <Heading title={itemCatalogTitle} note="EPIs e uniformes" action={edit ? <Link className="button" href={root}>Voltar à lista de itens</Link> :
       <Link className="button primary" href={`${root}?edit=novo`}>Novo item</Link>} />
     {edit ? <Editor title={item ? "Editar item" : "Novo item"}>
-      <ActionForm key={edit} action={saveEquipment.bind(null, companyId, item?.id ?? null)} reset={!item}>
+      <ActionForm key={edit} action={saveEquipment.bind(null, companyId, item?.id ?? null)} continueLabel="Salvar e continuar" reset={!item}>
         <div className="form-grid">
           {textField("Nome do item", "name", item?.name)}
           {textField("Fabricante e modelo", "makerModel", item?.makerModel)}
@@ -98,7 +99,9 @@ export async function Catalog({ scope, edit }: { scope: AccessScope; edit: strin
   </>;
 }
 
-export async function Inventory({ scope, operation, warehouseId = "" }: { scope: AccessScope; operation: string; warehouseId?: string }) {
+export async function Inventory({ scope, operation, warehouseId = "", registered = false }: {
+  scope: AccessScope; operation: string; warehouseId?: string; registered?: boolean;
+}) {
   const { companyId } = scope;
   const admin = canAdminister(scope);
   if (!handlesStock(scope)) notFound();
@@ -114,7 +117,7 @@ export async function Inventory({ scope, operation, warehouseId = "" }: { scope:
     operation !== "almoxarifado" ? db.warehouse.findMany({
       where: { companyId, active: true, unit: { ...unitsWhere(scope), active: true } }, include: { unit: true }, orderBy: { name: "asc" },
     }) : [],
-    operation === "entrada" ? db.equipment.findMany({ where: { companyId, active: true }, orderBy: { name: "asc" } }) : [],
+    operation === "entrada" ? db.equipment.findMany({ where: { companyId, active: true }, select: { id: true, name: true }, orderBy: { name: "asc" } }) : [],
     operation === "almoxarifado" ? db.unit.findMany({ where: { ...unitsWhere(scope), active: true }, orderBy: { name: "asc" } }) : [],
   ]);
   const today = todayInBrazil();
@@ -135,22 +138,22 @@ export async function Inventory({ scope, operation, warehouseId = "" }: { scope:
         <Link className="button" href={`${root}?acao=almoxarifado`}>Novo almoxarifado</Link>
         <Link className="button primary" href={`${root}?acao=entrada`}>Registrar entrada</Link>
       </div>} />
-    {operation === "almoxarifado" ? <Editor title="Dados do almoxarifado"><ActionForm action={saveWarehouse.bind(null, companyId)} label="Cadastrar almoxarifado">
+    {!operation && registered && <p className="feedback success operation-feedback" role="status">Entrada registrada.</p>}
+    {operation === "almoxarifado" ? <Editor title="Dados do almoxarifado"><ActionForm action={saveWarehouse.bind(null, companyId)} continueLabel="Salvar e continuar" reset>
       {textField("Nome do almoxarifado", "name")}
       <Choose label="Unidade" name="unit" values={units} />
     </ActionForm></Editor> : operation === "entrada" ? <Editor title="Item recebido">
-      {warehouses.length && items.length ? <ActionForm action={addStock.bind(null, companyId)} label="Registrar entrada" reset>
+      {warehouses.length ? <ActionForm action={addStock.bind(null, companyId, randomUUID())} continueLabel="Salvar e continuar" reset>
+        <Choose label="Almoxarifado" name="warehouse"
+          selected={warehouses.some(({ id }) => id === warehouseId) ? warehouseId : warehouses.length === 1 ? warehouses[0].id : ""}
+          values={warehouses.map((row) => ({ id: row.id, name: `${row.name} · ${row.unit.name}` }))} />
+        <EquipmentPicker items={items} />
         <div className="form-grid">
-          <Choose label="Almoxarifado" name="warehouse"
-            selected={warehouses.some(({ id }) => id === warehouseId) ? warehouseId : warehouses.length === 1 ? warehouses[0].id : ""}
-            values={warehouses.map((row) => ({ id: row.id, name: `${row.name} · ${row.unit.name}` }))} />
-          <Choose label="Item" name="equipment" values={items} />
           {quantityField}
           <label className="field">Validade do produto (opcional)<input type="date" name="expiresAt" /></label>
         </div>
-      </ActionForm> : <p className="empty">Para registrar uma entrada, cadastre um {warehouses.length ?
-        <Link href={`/${companyId}/epis?edit=novo`} className="text-action">item</Link> :
-        <Link href={`${root}?acao=almoxarifado`} className="text-action">almoxarifado</Link>}.</p>}
+      </ActionForm> : <p className="empty">Para registrar uma entrada, cadastre um <Link href={`${root}?acao=almoxarifado`}
+        className="text-action">almoxarifado</Link>.</p>}
     </Editor> : <>
       <h2 className="section-title">Almoxarifados</h2>
       <Records cardsOnMobile columns={["Almoxarifado", "Unidade", "Situação", "Ação"]}
@@ -177,7 +180,7 @@ async function StockMinimums({ scope }: { scope: AccessScope }) {
     <Heading title="Estoque mínimo" note={`O alerta aparece quando o saldo atinge o mínimo. O padrão é de ${defaultStockMinimum} unidades por item e unidade.`}
       action={<Link className="button" href={`/${companyId}/estoque`}>Voltar ao estoque</Link>} />
     <Editor title="Definir mínimo">
-      <ActionForm action={saveStockMinimum.bind(null, companyId)} label="Salvar mínimo">
+      <ActionForm action={saveStockMinimum.bind(null, companyId)} continueLabel="Salvar e continuar">
         <div className="form-grid">
           <Choose label="Unidade" name="unit" values={units} />
           <Choose label="Item" name="equipment" values={items} />
@@ -188,7 +191,7 @@ async function StockMinimums({ scope }: { scope: AccessScope }) {
         </div>
       </ActionForm>
     </Editor>
-    <h2 className="section-title">Mínimos por item e unidade</h2>
+    <h2 className="section-title" id="minimos-cadastrados">Mínimos por item e unidade</h2>
     <Records cardsOnMobile columns={["Item", "Unidade", "Quantidade mínima", "Ação"]}
       rows={settings.map((row) => [JSON.stringify([row.unitId, row.equipmentId]), row.equipment.name, row.unit.name, row.quantity,
         <ActionForm action={resetStockMinimum.bind(null, companyId, row.unitId, row.equipmentId)} label="Usar padrão" />])} />
@@ -208,7 +211,7 @@ export async function ExpectedItems({ scope }: { scope: AccessScope }) {
   return <>
     <Heading title="Itens esperados" note="Defina o que cada unidade ou função deve receber. A lista aparece no acompanhamento da equipe." />
     <Editor title="Definir item esperado">
-      <ActionForm action={saveExpectedItem.bind(null, companyId)} label="Salvar item esperado">
+      <ActionForm action={saveExpectedItem.bind(null, companyId)} continueLabel="Salvar e continuar" reset>
         <p>Selecione uma unidade, informe uma função ou combine os dois campos para limitar a lista.</p>
         <div className="form-grid">
           <Choose label="Unidade" name="unit" values={units} optional empty="Todas as unidades" />
@@ -220,7 +223,7 @@ export async function ExpectedItems({ scope }: { scope: AccessScope }) {
         </div>
       </ActionForm>
     </Editor>
-    <h2 className="section-title">Itens configurados</h2>
+    <h2 className="section-title" id="itens-configurados">Itens configurados</h2>
     <Records cardsOnMobile columns={["Item", "Unidade", "Função", "Quantidade", "Ação"]}
       rows={rules.map((row) => [row.id, row.equipment.name, row.unit?.name ?? "Todas", row.jobTitle || "Todas", row.quantity,
         <ActionForm action={removeExpectedItem.bind(null, companyId, row.id)} label="Remover da lista" />])} />
@@ -240,13 +243,13 @@ export async function Rules({ scope }: { scope: AccessScope }) {
       "A regra de um item tem prioridade sobre a regra geral da unidade." :
       "Aprovação desativada. Os pedidos seguem para o almoxarifado. Você pode guardar regras para uso futuro."} />
     <Editor title="Definir regra">
-      <ActionForm action={saveRule.bind(null, companyId)}>
+      <ActionForm action={saveRule.bind(null, companyId)} continueLabel="Salvar e continuar" reset>
         <Choose label="Unidade" name="unit" values={units} />
         <Choose label="Item" name="equipment" values={equipment} optional empty="Regra geral da unidade" />
         <label className="field">Aprovação<select name="required" defaultValue="yes"><option value="yes">Exigir</option><option value="no">Dispensar</option></select></label>
       </ActionForm>
     </Editor>
-    <h2 className="section-title">Regras cadastradas</h2>
+    <h2 className="section-title" id="regras-cadastradas">Regras cadastradas</h2>
     <Records columns={["Unidade", "Item", "Aprovação"]} rows={rules.map((row) => [row.id, row.unit.name, row.equipment?.name ?? "Regra geral", row.required ? "Exigida" : "Dispensada"])} />
   </>;
 }
@@ -441,13 +444,15 @@ export async function Deliveries({ scope, create, requestId, registered, paper =
       totals.set(key, row);
     }
     const canSubmit = request ? [...totals.values()].some(({ quantity }) => quantity >= request.quantity) :
-      people.length && (paper ? items.length : warehouses.length);
+      people.length && (paper || warehouses.length > 0);
     return <>
-      <Heading title={paper ? "Registrar ficha de papel" : request ? "Atender pedido" : "Nova entrega"}
-        note={paper ? "Registre o que o colaborador já recebeu. O saldo do almoxarifado ficará igual." : undefined}
+      <Heading title={paper ? "Registrar entregas anteriores" : request ? "Atender pedido" : "Nova entrega"}
+        note={paper ? "Registre itens já entregues ao colaborador sem movimentar o estoque." : undefined}
         action={<Link className="button" href={request ? `/${companyId}/solicitacoes?fila=prontos` : root}>Voltar</Link>} />
       {canSubmit ? <Editor title={paper ? "Item já entregue" : "Dados da entrega"}>
-        <ActionForm action={registerDelivery.bind(null, companyId, randomUUID(), requestId || null, paper)} label={paper ? "Registrar item" : "Confirmar entrega"}>
+        <ActionForm action={registerDelivery.bind(null, companyId, randomUUID(), requestId || null, paper)}
+          label={paper ? "Salvar e continuar" : request ? "Confirmar entrega" : "Salvar"}
+          continueLabel={paper || request ? undefined : "Salvar e continuar"} reset={!request}>
           <DeliveryFields key={employeeId} people={people} warehouses={warehouses} stocks={[...totals.values()]} items={items}
             paper={paper} employeeId={employeeId} today={inputDay(today)} request={request ? {
             name: request.employee.name, equipment: request.equipment!.name, unitId: request.unitId,
@@ -456,8 +461,7 @@ export async function Deliveries({ scope, create, requestId, registered, paper =
         </ActionForm>
       </Editor> : <section className="panel"><p className="empty">{request ?
         <>Nenhum almoxarifado da unidade tem saldo suficiente. <Link className="text-action" href={`/${companyId}/estoque?acao=entrada`}>Registrar entrada</Link></> : !people.length ?
-        "Nenhum colaborador ativo está disponível no seu escopo." : paper ?
-        <>Cadastre um EPI ou uniforme para lançar a ficha. <Link className="text-action" href={`/${companyId}/epis?edit=novo`}>Cadastrar item</Link></> :
+        "Nenhum colaborador ativo está disponível no seu escopo." :
         <>A unidade precisa de um almoxarifado para registrar entregas. <Link className="text-action" href={`/${companyId}/estoque?acao=almoxarifado`}>Cadastrar almoxarifado</Link></>}</p></section>}
     </>;
   }
@@ -498,14 +502,14 @@ export async function Deliveries({ scope, create, requestId, registered, paper =
     </details>;
   const receiptCell = (row: (typeof rows)[number], canConfirm: boolean) => row.receipt ?
     <span className="badge active">Confirmado em {receiptDate.format(row.receipt.confirmedAt)}</span> :
-    !row.warehouseId ? <span className="badge">Ficha de papel</span> :
+    !row.warehouseId ? <span className="badge">Entrega anterior</span> :
     canConfirm ? <ActionForm action={confirmReceipt.bind(null, companyId, row.id)} label="Confirmo que recebi" /> : "Aguardando confirmação";
   const itemCard = (row: (typeof rows)[number], allowActions: boolean) =>
     <article className={`panel personal-equipment-card${pendingIds.has(row.id) ? " awaiting-receipt" : ""}`} key={row.id} id={`entrega-${row.id}`}>
       <h3>{row.equipment.name}</h3>
       <dl>
         <div><dt>Quantidade</dt><dd>{row.quantity}</dd></div>
-        <div><dt>{row.warehouseId ? "Data da entrega" : "Data da ficha"}</dt><dd>{formatDay(row.deliveredAt)}</dd></div>
+        <div><dt>Data da entrega</dt><dd>{formatDay(row.deliveredAt)}</dd></div>
         {row.stock?.lot.expiresAt && <div><dt>Validade do produto</dt><dd>
           {formatDay(row.stock.lot.expiresAt)} {row.stock.lot.expiresAt < today && <span className="badge deadline-danger">Vencido</span>}
         </dd></div>}
@@ -531,12 +535,11 @@ export async function Deliveries({ scope, create, requestId, registered, paper =
   return <>
     <Heading title={own ? "Meus itens" : "Histórico"} note={own ? "Entregas de EPIs e uniformes" : "Entregas registradas e confirmação de recebimento"}
       action={operator && <div className="operation-actions">
-        <Link className="button" href={`${root}?edit=ficha`}>Registrar ficha de papel</Link>
+        <Link className="button" href={`${root}?edit=ficha`}>Registrar entregas anteriores</Link>
         <Link className="button primary" href={`${root}?edit=novo`}>Nova entrega</Link>
       </div>} />
     {operator && registered && <p className="feedback success operation-feedback" role="status">{registered === "ficha" ?
-      <>Item da ficha registrado. O saldo do almoxarifado ficou igual. <Link className="text-action"
-        href={`${root}?edit=ficha${employeeId ? `&colaborador=${encodeURIComponent(employeeId)}` : ""}`}>Registrar outro item</Link></> :
+      "Entrega anterior registrada." :
       "Entrega registrada e saldo atualizado."}</p>}
     {own && <>
       {retired && <p className="feedback success operation-feedback" role="status">Item retirado de uso. A entrega ficou registrada no histórico.</p>}

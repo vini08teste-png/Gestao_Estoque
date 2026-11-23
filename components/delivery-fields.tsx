@@ -1,6 +1,7 @@
 "use client";
 
 import { useId, useState } from "react";
+import { EquipmentPicker } from "@/components/equipment-picker";
 
 type Person = { id: string; name: string; unitId: string; unit: { name: string } };
 type Warehouse = { id: string; name: string; unitId: string };
@@ -20,6 +21,7 @@ export function DeliveryFields({ people, warehouses, stocks, items, today, reque
   const [person, setPerson] = useState(employeeId || (people.length === 1 ? people[0].id : ""));
   const [selectedWarehouse, setWarehouse] = useState("");
   const [selectedItem, setItem] = useState("");
+  const [originalDate, setOriginalDate] = useState("");
   const personFieldId = useId();
   const warehouseFieldId = useId();
   const itemFieldId = useId();
@@ -30,7 +32,7 @@ export function DeliveryFields({ people, warehouses, stocks, items, today, reque
   const defaultWarehouses = request ? unitWarehouses.filter(({ id }) => (warehouseBalances.get(id) ?? 0) >= request.quantity) : unitWarehouses;
   const warehouse = selectedWarehouse || (defaultWarehouses.length === 1 ? defaultWarehouses[0].id : "");
   const warehouseStock = stocks.filter(({ warehouseId }) => warehouseId === warehouse);
-  const itemOptions = paper ? items : warehouseStock.map(({ item }) => item);
+  const itemOptions = warehouseStock.map(({ item }) => item);
   const itemId = selectedItem || (itemOptions.length === 1 ? itemOptions[0].id : "");
   const quantityAvailable = warehouseStock.find(({ item }) => item.id === itemId)?.quantity;
   const emptyWarehouse = Boolean(warehouse && !request && !warehouseStock.length);
@@ -63,11 +65,11 @@ export function DeliveryFields({ people, warehouses, stocks, items, today, reque
       </select>
       {emptyWarehouse && <small id={warehouseFieldId + "-help"}>Este almoxarifado já está cadastrado. Registre uma entrada para disponibilizar itens.</small>}
     </div>}
-    {!request && <div className="field">
+    {paper ? <EquipmentPicker items={items} /> : !request && <div className="field">
       <label htmlFor={itemFieldId}>Item</label>
       <select id={itemFieldId} name="equipment" value={itemId} onChange={(event) => setItem(event.target.value)}
-        aria-describedby={quantityAvailable === undefined ? undefined : itemFieldId + "-help"} required disabled={!paper && !warehouse}>
-        <option value="" disabled>{!paper && !warehouse ? "Selecione primeiro o almoxarifado" : itemOptions.length ? "Selecione o EPI ou uniforme" : "Nenhum item disponível"}</option>
+        aria-describedby={quantityAvailable === undefined ? undefined : itemFieldId + "-help"} required disabled={!warehouse}>
+        <option value="" disabled>{!warehouse ? "Selecione primeiro o almoxarifado" : itemOptions.length ? "Selecione o EPI ou uniforme" : "Nenhum item disponível"}</option>
         {itemOptions.map(({ id, name }) => <option value={id} key={id}>{name}</option>)}
       </select>
       {quantityAvailable !== undefined && <small id={itemFieldId + "-help"}>Saldo disponível neste almoxarifado: {quantityAvailable} un.</small>}
@@ -75,11 +77,12 @@ export function DeliveryFields({ people, warehouses, stocks, items, today, reque
     <div className="form-grid">
       {!request && <label className="field">Quantidade<input name="quantity" type="number" min={1}
         max={Math.min(quantityAvailable ?? 1_000_000, 1_000_000)} defaultValue={1} required /></label>}
-      <label className="field">{paper ? "Data da ficha" : "Data da entrega"}<input name="deliveredAt" type="date"
-        defaultValue={paper ? undefined : today} min={request?.minDate} max={today} required /></label>
+      <label className="field">Data da entrega<input name="deliveredAt" type="date"
+        {...(paper ? { value: originalDate, onChange: (event) => setOriginalDate(event.target.value) } : { defaultValue: today })}
+        min={request?.minDate} max={today} required /></label>
     </div>
     <details className="record-details delivery-proof">
-      <summary>{paper ? "Anexar ficha (opcional)" : "Anexo de entrega (opcional)"}</summary>
+      <summary>Comprovante (opcional)</summary>
       <div className="field">
         <label htmlFor={proofId}>Comprovante</label>
         <input id={proofId} name="proof" type="file" accept="application/pdf,image/png,image/jpeg" aria-describedby={proofId + "-help"} />

@@ -7,6 +7,7 @@ import { canAdminister, requireScope, type AccessScope } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { canAddEmployees, canGrantSupervisorAccess, employeesWhere, unitsWhere } from "@/lib/directory";
 import { emailAddress, text, validEmail, type FormResult } from "@/lib/forms";
+import { finishSave } from "@/lib/form-navigation";
 import { roles } from "@/lib/organization";
 import { hashPassword, passwordLengthText, validPassword, verifyPassword } from "@/lib/password";
 import type { Role } from "@/generated/prisma/enums";
@@ -49,14 +50,15 @@ async function save(companyId: string, operation: (tx: Prisma.TransactionClient,
 }
 
 export async function saveCompany(companyId: string, _: FormResult, data: FormData) {
-  return save(companyId, async (tx) => {
+  const result = await save(companyId, async (tx) => {
     const name = required(data, "name", "o nome");
     await tx.company.update({ where: { id: companyId }, data: { name } });
   });
+  return finishSave(result, data, `/${companyId}`);
 }
 
 export async function saveAlertDays(companyId: string, _: FormResult, data: FormData) {
-  return save(companyId, async (tx) => {
+  const result = await save(companyId, async (tx) => {
     const alertDays = ["short", "medium", "long"].map((name) => Number(text(data, name)));
     const [short, medium, long] = alertDays;
     if (!alertDays.every(Number.isInteger) || short < 1 || long > 365 || short >= medium || medium >= long) {
@@ -64,18 +66,20 @@ export async function saveAlertDays(companyId: string, _: FormResult, data: Form
     }
     await tx.company.update({ where: { id: companyId }, data: { alertDays } });
   });
+  return finishSave(result, data, `/${companyId}/alertas`);
 }
 
 export async function saveUnit(companyId: string, id: string | null, _: FormResult, data: FormData) {
-  return save(companyId, async (tx) => {
+  const result = await save(companyId, async (tx) => {
     const values = { name: required(data, "name", "o nome"), active: data.get("active") === "on" };
     if (id) await tx.unit.update({ where: { companyId_id: { companyId, id } }, data: values });
     else await tx.unit.create({ data: { companyId, ...values } });
   });
+  return finishSave(result, data, `/${companyId}/unidades`);
 }
 
 export async function saveEmployee(companyId: string, id: string | null, _: FormResult, data: FormData) {
-  return save(companyId, async (tx, _, scope) => {
+  const result = await save(companyId, async (tx, _, scope) => {
     const unitId = required(data, "unit", "a unidade");
     const supervisorId = scope.role === "SUPERVISOR" ? scope.employee?.id ?? null : text(data, "supervisor") || null;
     const contractorCompany = text(data, "contractorCompany");
@@ -107,6 +111,7 @@ export async function saveEmployee(companyId: string, id: string | null, _: Form
     if (id) await tx.employee.update({ where: { companyId_id: { companyId, id } }, data: values });
     else await tx.employee.create({ data: { companyId, ...values } });
   }, id ? canAdminister : canAddEmployees);
+  return finishSave(result, data, `/${companyId}/colaboradores`);
 }
 
 async function createUser(tx: Prisma.TransactionClient, email: string, password: FormDataEntryValue | null) {
@@ -150,7 +155,7 @@ export async function grantSupervisorAccess(companyId: string, employeeId: strin
 }
 
 export async function saveUser(companyId: string, id: string | null, _: FormResult, data: FormData) {
-  return save(companyId, async (tx, actor) => {
+  const result = await save(companyId, async (tx, actor) => {
     const name = required(data, "name", "o nome");
     const role = text(data, "role") as Role;
     if (!Object.hasOwn(roles, role)) throw new FormError("Selecione um perfil.");
@@ -188,6 +193,7 @@ export async function saveUser(companyId: string, id: string | null, _: FormResu
       data: { companyId, userId: user.id, ...values, units: { createMany: { data: unitIds.map((unitId) => ({ unitId })) } } },
     });
   });
+  return finishSave(result, data, `/${companyId}/usuarios`);
 }
 
 export async function resetUserPassword(companyId: string, userId: string, _: FormResult, data: FormData) {

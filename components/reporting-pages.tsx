@@ -158,7 +158,7 @@ export async function Dashboard({ scope }: { scope: AccessScope }) {
             {latest.map((row) => <li key={row.id}>
               <div>
                 <span><strong>{row.equipment.name}</strong><small>{detail(row.employee.name, row.quantity)} · {formatDay(row.deliveredAt)}</small></span>
-                <span className={`badge ${!row.warehouseId ? "" : row.receipt ? "active" : "deadline-warning"}`}>{!row.warehouseId ? "Ficha de papel" : row.receipt ? "Confirmado" : "Aguardando confirmação"}</span>
+                <span className={`badge ${!row.warehouseId ? "" : row.receipt ? "active" : "deadline-warning"}`}>{!row.warehouseId ? "Entrega anterior" : row.receipt ? "Confirmado" : "Aguardando confirmação"}</span>
               </div>
             </li>)}
           </ul> : <p className="empty">Nenhuma entrega registrada.</p>}
@@ -276,7 +276,7 @@ export async function Alerts({ scope, query }: { scope: AccessScope; query: Quer
     </>}
     {!operationsOnly && canAdminister(scope) && <details className="panel editor deadline-settings">
       <summary>Configurar prazos de alerta</summary>
-      <ActionForm action={saveAlertDays.bind(null, scope.companyId)}>
+      <ActionForm action={saveAlertDays.bind(null, scope.companyId)} continueLabel="Salvar e continuar">
         <p>Escolha três prazos em dias, em ordem crescente, para os alertas de validade do CA e do produto.</p>
         <div className="form-grid">
           {([["short", "Prazo curto"], ["medium", "Prazo intermediário"], ["long", "Prazo mais longo"]] as const).map(([name, label], index) =>

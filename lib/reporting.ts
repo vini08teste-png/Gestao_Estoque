@@ -166,7 +166,7 @@ export async function reportRows(scope: AccessScope, kind: ReportKind, filters: 
     rows: deliveries.map((row) => [
       company, row.stock?.warehouse.unit.name ?? row.employee.unit.name, row.stock?.warehouse.name ?? "—", row.employee.registration, row.employee.name,
       row.equipment.name, row.quantity, formatDay(row.deliveredAt),
-      !row.stock ? "Ficha de papel" : row.receipt ? "Confirmado" : "Aguardando confirmação",
+      !row.stock ? "Entrega anterior" : row.receipt ? "Confirmado" : "Aguardando confirmação",
     ]),
   };
 

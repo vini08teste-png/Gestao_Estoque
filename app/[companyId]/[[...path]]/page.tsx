@@ -78,7 +78,7 @@ async function Units({ scope, edit }: { scope: AccessScope; edit: string }) {
         action={admin && !edit && <NewLink base={base}>Nova unidade</NewLink>} />
       {edit ? (
         <Editor title={current ? "Editar unidade" : "Nova unidade"} base={base}>
-          <ActionForm key={edit} action={saveUnit.bind(null, scope.companyId, current?.id ?? null)} reset={!current}>
+          <ActionForm key={edit} action={saveUnit.bind(null, scope.companyId, current?.id ?? null)} continueLabel="Salvar e continuar" reset={!current}>
             <TextField name="name" label="Nome da unidade" value={current?.name} />
             <ActiveField active={current?.active} />
           </ActionForm>
@@ -145,7 +145,7 @@ async function Employees({ scope, edit, supervisorAccess, query, status, awaitin
         <Heading title={title} description={scope.company.name} />
         <Editor title={current ? "Editar colaborador" : "Novo colaborador"} base={base}>
           {units.length ? (
-            <ActionForm key={edit} action={saveEmployee.bind(null, companyId, current?.id ?? null)} reset={!current}>
+            <ActionForm key={edit} action={saveEmployee.bind(null, companyId, current?.id ?? null)} continueLabel="Salvar e continuar" reset={!current}>
               <div className="form-grid">
                 <TextField name="registration" label="Matrícula" value={current?.registration} max={32} />
                 <TextField name="name" label="Nome completo" value={current?.name} />
@@ -210,8 +210,8 @@ async function Employees({ scope, edit, supervisorAccess, query, status, awaitin
             <Link className="text-action" aria-label={`Configurar acesso de ${person.name}`}
               href={`/${companyId}/usuarios?${person.scope ? `edit=${encodeURIComponent(person.scope.userId)}` :
                 `edit=novo&colaborador=${encodeURIComponent(person.id)}`}`}>Configurar acesso</Link>
-            {person.active && <Link className="text-action" aria-label={`Registrar ficha de papel de ${person.name}`}
-              href={`/${companyId}/entregas?edit=ficha&colaborador=${encodeURIComponent(person.id)}`}>Registrar ficha de papel</Link>}
+            {person.active && <Link className="text-action" aria-label={`Registrar entregas anteriores de ${person.name}`}
+              href={`/${companyId}/entregas?edit=ficha&colaborador=${encodeURIComponent(person.id)}`}>Registrar entregas anteriores</Link>}
           </div>] : [])])} />}
     </>
   );
@@ -241,7 +241,7 @@ async function Users({ scope, edit, viewerId, profile, employeeId }: {
       <>
         <Heading title="Acessos e perfis" description={scope.company.name} />
         <Editor title={current ? "Editar acesso" : "Novo acesso"} base={base}>
-          <ActionForm key={edit} action={saveUser.bind(null, companyId, current?.userId ?? null)} reset={!current}>
+          <ActionForm key={edit} action={saveUser.bind(null, companyId, current?.userId ?? null)} continueLabel="Salvar e continuar" reset={!current}>
             <div className="form-grid">
               <TextField name="name" label="Nome de exibição" value={current?.name ?? person?.name} />
               <label className="field">E-mail usado no login
@@ -316,7 +316,7 @@ function Company({ scope }: { scope: AccessScope }) {
     <>
       <Heading title="Empresa" description={companyBrands[scope.companyId].label} />
       <section className="panel editor" aria-label="Dados da empresa">
-        <ActionForm action={saveCompany.bind(null, scope.companyId)}>
+        <ActionForm action={saveCompany.bind(null, scope.companyId)} continueLabel="Salvar e continuar">
           <TextField name="name" label="Nome de exibição" value={scope.company.name} />
         </ActionForm>
       </section>
@@ -348,7 +348,7 @@ export default async function CompanyPage({ params, searchParams }: {
       employeeId={typeof search.colaborador === "string" ? search.colaborador : ""} />,
     empresa: <Company scope={scope} />,
     epis: <Catalog scope={scope} edit={edit} />,
-    estoque: <Inventory scope={scope} operation={typeof search.acao === "string" ? search.acao : ""}
+    estoque: <Inventory scope={scope} operation={typeof search.acao === "string" ? search.acao : ""} registered={search.entrada === "1"}
       warehouseId={typeof search.almoxarifado === "string" ? search.almoxarifado : ""} />,
     entregas: <Deliveries scope={scope} create={edit === "novo"} paper={edit === "ficha"}
       employeeId={(edit === "ficha" || search.registrada === "ficha") && typeof search.colaborador === "string" ? search.colaborador : ""}

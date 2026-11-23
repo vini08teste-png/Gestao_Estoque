@@ -6,6 +6,8 @@
 2. Em **Estoque → Novo almoxarifado**, selecione uma unidade ativa e informe o nome. Cada almoxarifado atende uma unidade.
 3. Em **Estoque → Registrar entrada**, escolha o almoxarifado e o item. Informe a quantidade e a validade física do produto, quando houver. A movimentação registra quantidade, responsável e data.
 
+Se o item ainda não existir no catálogo, use **Cadastrar novo item** no próprio formulário. Ao salvar, o sistema cadastra o item e registra a entrada juntos.
+
 O almoxarifado aparece na lista assim que é cadastrado. A seção **Saldo por item** mostra as quantidades disponíveis e indisponíveis por local. O administrador pode editar ou inativar itens. A inativação preserva os registros anteriores.
 
 ## Entender a disponibilidade
@@ -31,11 +33,11 @@ A disponibilidade é consultada quando a tela carrega. O estoque só é baixado 
 
 Em uma transação, o sistema dá baixa no saldo, registra a entrega, grava a movimentação e conclui o pedido, quando vinculado. Se alguma operação falhar, o conjunto é desfeito. Uma verificação no momento da baixa impede saldo negativo se dois operadores tentarem usar as últimas unidades.
 
-## Registrar o que já foi entregue em papel
+## Registrar entregas anteriores
 
-Em **Histórico → Registrar ficha de papel**, escolha o colaborador e o item. Informe a quantidade e a data original. A foto ou PDF da ficha é opcional. Depois de salvar, use **Registrar outro item** para manter o colaborador selecionado.
+Em **Histórico → Registrar entregas anteriores**, escolha o colaborador e o item. Use **Cadastrar novo item** quando necessário. Informe a quantidade e a data original. O comprovante é opcional. **Salvar e continuar** mantém a tela aberta com o colaborador e a data selecionados.
 
-O registro aparece em **Itens em uso** com a indicação **Ficha de papel**. O sistema preserva o saldo do estoque e guarda quem lançou a ficha sem registrar confirmação digital em nome do colaborador.
+O registro aparece em **Itens em uso** com a indicação **Entrega anterior**. O sistema preserva o saldo do estoque e registra o responsável pelo lançamento.
 
 ## Confirmar o recebimento
 

@@ -7,6 +7,8 @@ A [documentação do sistema](docs/README.md) detalha o comportamento implementa
 
 ## 2. Princípios
 - Priorizar simplicidade operacional e telas rápidas.
+- Reduzir cliques e mudanças de tela. Quando faltar um cadastro necessário, permitir criá-lo no próprio fluxo e preservar os dados já preenchidos.
+- Nos formulários de cadastro e configuração, **Salvar** conclui a edição e **Salvar e continuar** mantém o formulário aberto. Em entregas anteriores, manter o colaborador e a data após cada lançamento.
 - Um sistema, duas identidades visuais e dados segregados por empresa.
 - Atender múltiplas unidades e almoxarifados.
 - Não implementar devoluções, manutenção, compras ou fluxos complexos na V1.
