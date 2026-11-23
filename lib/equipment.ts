@@ -1,0 +1,40 @@
+import type { RequestStatus, RetirementReason } from "@/generated/prisma/enums";
+
+export const requestLabels: Record<RequestStatus, string> = {
+  WAITING_CATALOG: "Aguardando identificação do item",
+  PENDING_APPROVAL: "Pendente de aprovação",
+  WAITING_DELIVERY: "Aguardando entrega",
+  COMPLETED: "Concluída",
+  REJECTED: "Rejeitada",
+  CANCELLED: "Cancelada",
+};
+
+export const retirementLabels: Record<RetirementReason, string> = {
+  EXPIRED: "Fora da validade",
+  DAMAGED: "Dano ou desgaste",
+  OTHER: "Outro motivo",
+};
+
+export function latestByItem<T extends { equipmentId: string }>(deliveries: T[]) {
+  const seen = new Set<string>();
+  return deliveries.filter((row) => {
+    if (seen.has(row.equipmentId)) return false;
+    seen.add(row.equipmentId);
+    return true;
+  });
+}
+
+const dayFormat = new Intl.DateTimeFormat("pt-BR", { timeZone: "UTC" });
+export const formatDay = (date: Date) => dayFormat.format(date);
+export const inputDay = (date: Date) => date.toISOString().slice(0, 10);
+const brazilFormat = new Intl.DateTimeFormat("fr-CA", {
+  timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit",
+});
+export const brazilDay = (date: Date) => new Date(brazilFormat.format(date) + "T00:00:00Z");
+export const todayInBrazil = () => brazilDay(new Date());
+
+export function plusDays(date: Date, days: number) {
+  const result = new Date(date);
+  result.setUTCDate(result.getUTCDate() + days);
+  return result;
+}

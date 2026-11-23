@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="pt-BR" data-company="tsa">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#a51e22">
+  <title>Dashboard | Gestão de EPIs</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#conteudo">Ir para o conteúdo</a>
+  <div class="shell">
+    <aside class="sidebar" id="sidebar">
+      <a class="brand" href="#dashboard" aria-label="Gestão de EPIs, início">
+        <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+        <span><strong id="brand-name">TSA</strong><small>Grupo TSA</small></span>
+      </a>
+
+      <nav class="main-nav" aria-label="Menu principal">
+        <a href="#dashboard" data-page="dashboard" aria-current="page"><span class="icon grid" aria-hidden="true"></span>Dashboard</a>
+        <a href="#meus-epis" data-page="meus-epis"><span class="icon shield" aria-hidden="true"></span>Meus EPIs</a>
+        <a href="#solicitacoes" data-page="solicitacoes"><span class="icon sheet" aria-hidden="true"></span>Solicitações</a>
+        <a href="#entregas" data-page="entregas"><span class="icon box" aria-hidden="true"></span>Entregas</a>
+      </nav>
+
+      <div class="sidebar-footer">
+        <span class="demo-dot" aria-hidden="true"></span>
+        <div><strong>Modo demonstração</strong><small>Dados fictícios</small></div>
+      </div>
+    </aside>
+
+    <div class="workspace">
+      <header class="topbar">
+        <div class="topbar-title">
+          <button class="menu-toggle" type="button" aria-label="Abrir menu" aria-controls="sidebar" aria-expanded="false"><span class="icon menu" aria-hidden="true"></span></button>
+          <span>Gestão de EPIs</span><span class="breadcrumb-divider" aria-hidden="true">/</span><strong id="breadcrumb">Dashboard</strong>
+        </div>
+        <div class="company-switch">
+          <label for="company">Empresa</label>
+          <div class="select-wrap company-select"><span class="company-dot" aria-hidden="true"></span>
+            <select id="company">
+              <option value="tsa">TSA</option>
+              <option value="lynx">TSA Lynx</option>
+            </select>
+          </div>
+        </div>
+        <p class="mobile-demo">Demonstração · Dados fictícios</p>
+      </header>
+
+      <main id="conteudo" tabindex="-1"></main>
+    </div>
+  </div>
+  <dialog id="details" aria-labelledby="details-title">
+    <div class="dialog-content">
+      <div class="panel-heading"><h2 id="details-title"></h2><form method="dialog"><button class="button" aria-label="Fechar detalhes" autofocus>Fechar</button></form></div>
+      <div id="details-body"></div>
+    </div>
+  </dialog>
+</body>
+</html>

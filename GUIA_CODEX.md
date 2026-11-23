@@ -1,0 +1,120 @@
+# GUIA CODEX — Gestão de EPIs | Grupo TSA
+
+## 1. Objetivo
+Construir um sistema web interno, simples e responsivo, para gestão de EPIs e uniformes das empresas **TSA** e **TSA Lynx**, pertencentes ao Grupo TSA. O foco é saber quais itens foram entregues, a quem, quais recebimentos aguardam confirmação e quais produtos ou CAs se aproximam do vencimento.
+
+## 2. Princípios
+- Priorizar simplicidade operacional e telas rápidas.
+- Um sistema, duas identidades visuais e dados segregados por empresa.
+- Atender múltiplas unidades e almoxarifados.
+- Não implementar devoluções, manutenção, compras ou fluxos complexos na V1.
+- Prototipar telas primeiro em HTML/CSS/JS simples; somente depois integrar ao aplicativo.
+- Não inventar regras de segurança: parâmetros de prazo e fornecimento devem ser definidos pelos responsáveis da empresa.
+
+## 3. Identidade visual
+- Marca institucional: Grupo TSA.
+- Tema TSA: vermelho corporativo aproximado `#A51E22`.
+- Tema TSA Lynx: azul corporativo aproximado `#303D82`.
+- Cores provisórias, extraídas visualmente da referência fornecida; validar com os arquivos oficiais de marca.
+- Menu lateral grafite, cartões brancos, fundo cinza-claro e geometria discreta inspirada no material institucional.
+- Alterar tema, logotipo e escopo de dados conforme empresa selecionada e permissões.
+- Não recriar logotipos manualmente se houver ativos oficiais disponíveis.
+
+## 4. Perfis
+- **Administrador:** usuários, empresas, unidades, almoxarifados, configurações e regras de aprovação.
+- **Gestor:** cadastro de colaboradores, operação de estoque e entregas, e acompanhamento das unidades autorizadas.
+- **Encarregado:** cadastro e consulta da equipe direta, aprovação de suas solicitações e operação de estoque da unidade.
+- **Almoxarifado:** estoque, entradas, entregas e atendimento de solicitações.
+- **Colaborador:** consulta de seus itens, confirmação do recebimento e abertura/acompanhamento de solicitações.
+- O usuário com cadastro de colaborador ativo vinculado também tem acesso à área pessoal.
+- A autorização deve ser verificada no servidor e restringida por empresa/unidade/equipe conforme o caso.
+
+## 5. Módulos V1
+1. Login e seleção de empresa quando autorizado.
+2. Dashboard por perfil.
+3. Colaboradores: matrícula, nome, empresa, unidade, setor, função, encarregado e situação.
+4. Cadastro de itens: tipo EPI ou uniforme, nome, fabricante/modelo e observações. Para EPI, CA e sua validade.
+5. Estoque: validade do produto/lote, quantidade por almoxarifado, entradas e baixas.
+6. Histórico de entregas: colaborador, item, lote, quantidade, data, responsável, confirmação do destinatário e anexo opcional.
+7. Meus itens: EPIs e uniformes recebidos, histórico e confirmação de recebimento.
+8. Solicitações: item, quantidade, motivo, situação e aprovação quando exigida. Item fora do catálogo aguarda identificação.
+9. Alertas separados para estoque baixo ou zerado, validade de CA e validade de produto/lote.
+10. Relatórios básicos: entregas, pendências e vencimentos, com filtros por empresa/unidade.
+
+## 6. Regras de negócio
+- Cada colaborador pertence a uma empresa e unidade; matrícula única no escopo da empresa.
+- Cada almoxarifado pertence a uma unidade.
+- Não permitir estoque negativo; a baixa e a confirmação da entrega devem ocorrer em uma transação atômica.
+- Nova entrega de substituição acrescenta um registro ao histórico.
+- O destinatário confirma o recebimento. O sistema registra quem confirmou e quando.
+- CA e validade do produto/lote são campos e alertas distintos. A validade física do lote é preenchida quando aplicável.
+- O vencimento do CA não significa automaticamente que um EPI já entregue deva ser trocado. Conferir requisitos normativos aplicáveis antes de bloquear novas entregas.
+- Produto vencido ou bloqueado não pode ser entregue.
+- Alertas configuráveis: inicialmente 30, 15 e 7 dias; vencido/atrasado após a data.
+- Solicitações seguem para atendimento sem aprovação. Pedidos fora do catálogo passam pela identificação do item antes da entrega.
+- As regras de aprovação por unidade e item ficam disponíveis para uso futuro. Quando a aprovação for ativada, a regra específica prevalece sobre a geral e a aprovação é exigida na ausência de regra.
+- O estoque baixo sinaliza até cinco unidades disponíveis por item e unidade. O saldo disponível considera somente lotes válidos e liberados de almoxarifados ativos. A fila informa quando falta saldo para atender a quantidade pedida.
+- Solicitação com aprovação: `pendente_aprovacao -> aguardando_entrega -> concluida`; rejeição com justificativa.
+- Solicitação sem aprovação: `aguardando_entrega -> concluida`.
+- Uma solicitação por item. O atendimento é integral, e pedidos em aberto podem ser cancelados.
+- Entrega direta por operador autorizado continua permitida.
+- Registros de entrega não devem ser apagados; correções devem ser auditáveis.
+- Anexos de comprovantes devem ser vinculados à entrega, protegidos por autorização e integridade.
+- A entrega para reposição por dano ou desgaste segue o fluxo de estoque e entrega.
+- O pedido de troca aceita texto, foto ou ambos como justificativa. A foto fica vinculada ao pedido e disponível para visualização conforme as permissões da solicitação.
+
+## 7. Modelo de dados inicial
+Entidades: `empresas`, `unidades`, `almoxarifados`, `usuarios`, `usuario_escopos`, `colaboradores`, `epis`, `epi_lotes`, `estoques`, `movimentacoes`, `solicitacoes`, `regras_aprovacao`, `entregas`, `comprovantes`, `auditoria_eventos`.
+
+Relacionamentos principais:
+- Empresa 1:N unidades; unidade 1:N almoxarifados e colaboradores.
+- EPI 1:N lotes; estoque indexado por almoxarifado e lote.
+- Colaborador 1:N solicitações e entregas.
+- Entrega referencia EPI, lote, colaborador, almoxarifado e usuário responsável.
+- Regra de aprovação referencia unidade e opcionalmente tipo de EPI.
+
+Detalhar colunas, índices e migrações antes de programar o banco. Usar identificadores estáveis e restrições de integridade.
+
+## 8. Arquitetura sugerida
+- Next.js (App Router) + TypeScript.
+- Tailwind CSS e componentes acessíveis.
+- PostgreSQL + Prisma.
+- Autenticação com sessões seguras e controle de acesso no servidor.
+- Comprovantes privados armazenados no PostgreSQL, com autorização de download e verificação de integridade.
+- Monólito modular inicialmente, com serviços de domínio para estoque, entregas, solicitações e alertas.
+- Segredos somente em variáveis de ambiente; não registrar dados pessoais sensíveis em logs desnecessários.
+
+## 9. Plano incremental
+### Etapa 0 — Protótipo HTML
+Criar `prototype/index.html`, responsivo e sem dependências externas obrigatórias, com seletor de tema entre TSA e TSA Lynx, menu lateral, dashboard e dados fictícios. Não conectar banco nem simular gravação real.
+
+### Etapa 1 — Base
+Inicializar Next.js, tema, layout, autenticação, empresas/unidades, usuários e colaboradores.
+
+### Etapa 2 — EPIs e estoque
+Catálogo de EPIs e uniformes, CA, lotes, validade, entradas e saldos por almoxarifado.
+
+### Etapa 3 — Entregas
+Registro, baixa atômica, histórico, confirmação de recebimento e anexos opcionais.
+
+### Etapa 4 — Solicitações
+Portal do colaborador, aprovação configurável, fila do encarregado e atendimento pelo almoxarifado.
+
+### Etapa 5 — Alertas e relatórios
+Dashboard por perfil, alertas de validade de CA e lote, filtros e exportação básica.
+
+### Etapa 6 — Qualidade
+Testes, acessibilidade, segurança, autorização entre empresas, concorrência de estoque e documentação de implantação.
+
+## 10. Critérios de aceite essenciais
+- Alternar entre TSA e TSA Lynx altera marca e cores sem misturar dados.
+- Colaborador visualiza apenas seus EPIs e pedidos.
+- Encarregado aprova somente solicitações da equipe autorizada.
+- Entrega sem estoque disponível é rejeitada sem gravar baixa parcial.
+- Apenas o destinatário confirma o recebimento da própria entrega.
+- Alertas de CA e lote/produto são exibidos separadamente.
+- Solicitações seguem a regra específica da unidade/EPI quando existir.
+- Dashboard é utilizável em celular e desktop.
+
+## 11. Instrução para o Codex — primeiro trabalho
+> Leia este guia. Não implemente o sistema completo ainda. Comece somente pela **Etapa 0**: crie um protótipo funcional em HTML/CSS/JavaScript puro, com visual corporativo Grupo TSA, seletor de tema entre TSA e TSA Lynx, dashboard, menu e telas demonstrativas de Meus EPIs, Solicitações e Entregas. Use dados fictícios claramente identificados. Não utilize backend, banco de dados nem autenticação real. Mantenha código simples, organizado e responsivo. Ao finalizar, informe quais arquivos criou e como abrir o protótipo localmente.
