@@ -3,6 +3,8 @@ import { promisify } from "node:util";
 
 const derive = promisify(scrypt);
 const dummyHash = `${"0".repeat(32)}:${"0".repeat(128)}`;
+export const passwordLength = { min: 6, max: 128 } as const;
+export const passwordLengthText = `${passwordLength.min} a ${passwordLength.max}`;
 
 export async function hashPassword(password: string) {
   const salt = randomBytes(16).toString("hex");
@@ -17,5 +19,5 @@ export async function verifyPassword(password: string, hash = dummyHash) {
 }
 
 export function validPassword(password: string) {
-  return password.length >= 12 && password.length <= 128 && Boolean(password.trim());
+  return password.length >= passwordLength.min && password.length <= passwordLength.max && Boolean(password.trim());
 }

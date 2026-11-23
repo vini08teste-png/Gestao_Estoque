@@ -1,7 +1,7 @@
 import "dotenv/config";
 import { db } from "../lib/db";
 import { validEmail } from "../lib/forms";
-import { hashPassword, validPassword } from "../lib/password";
+import { hashPassword, passwordLengthText, validPassword } from "../lib/password";
 import { companyBrands } from "../lib/organization";
 
 async function seed() {
@@ -9,7 +9,7 @@ async function seed() {
   const name = process.env.INITIAL_ADMIN_NAME?.trim() ?? "";
   const password = process.env.INITIAL_ADMIN_PASSWORD ?? "";
   if (!validEmail(email) || !name || name.length > 120 || !validPassword(password)) {
-    throw new Error("Configure INITIAL_ADMIN_EMAIL, INITIAL_ADMIN_NAME e INITIAL_ADMIN_PASSWORD (12 a 128 caracteres).");
+    throw new Error(`Configure INITIAL_ADMIN_EMAIL, INITIAL_ADMIN_NAME e INITIAL_ADMIN_PASSWORD (${passwordLengthText} caracteres).`);
   }
   const passwordHash = await hashPassword(password);
   await db.$transaction(async (tx) => {

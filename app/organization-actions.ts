@@ -8,7 +8,7 @@ import { db } from "@/lib/db";
 import { canAddEmployees, unitsWhere } from "@/lib/directory";
 import { emailAddress, text, validEmail, type FormResult } from "@/lib/forms";
 import { roles } from "@/lib/organization";
-import { hashPassword, validPassword, verifyPassword } from "@/lib/password";
+import { hashPassword, passwordLengthText, validPassword, verifyPassword } from "@/lib/password";
 import type { Role } from "@/generated/prisma/enums";
 
 class FormError extends Error {}
@@ -144,7 +144,7 @@ export async function saveUser(companyId: string, id: string | null, _: FormResu
     const password = data.get("password");
     if (existing && password) throw new FormError("Para vincular uma conta existente, deixe a senha inicial em branco.");
     if (!existing && (typeof password !== "string" || !validPassword(password))) {
-      throw new FormError("Um novo usuário precisa de uma senha inicial com 12 a 128 caracteres.");
+      throw new FormError(`Um novo usuário precisa de uma senha inicial com ${passwordLengthText} caracteres.`);
     }
     const user = existing ?? await tx.user.create({
       data: { email, passwordHash: await hashPassword(password as string), mustChangePassword: true }, select: { id: true },
@@ -159,7 +159,7 @@ export async function resetUserPassword(companyId: string, userId: string, _: Fo
   return save(companyId, async (tx, actor) => {
     if (actor === userId) throw new FormError("Use Trocar senha no menu da sua conta.");
     const password = data.get("temporaryPassword");
-    if (typeof password !== "string" || !validPassword(password)) throw new FormError("Informe uma senha temporária de 12 a 128 caracteres.");
+    if (typeof password !== "string" || !validPassword(password)) throw new FormError(`Informe uma senha temporária de ${passwordLengthText} caracteres.`);
     const target = await tx.user.findUnique({
       where: { id: userId }, select: { scopes: { select: { companyId: true } }, passwordHash: true },
     });

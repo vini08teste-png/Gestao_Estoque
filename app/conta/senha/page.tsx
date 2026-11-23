@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { changePassword, logout } from "@/app/auth-actions";
 import { ActionForm } from "@/components/action-form";
 import { loadViewer } from "@/lib/auth";
+import { passwordLength, passwordLengthText } from "@/lib/password";
 
 export default async function PasswordPage() {
   const viewer = await loadViewer();
@@ -18,14 +19,14 @@ export default async function PasswordPage() {
     <section className="panel editor">
       <ActionForm action={changePassword} label="Salvar nova senha">
         <label className="field">{viewer.mustChangePassword ? "Senha temporária" : "Senha atual"}
-          <input name="currentPassword" type="password" autoComplete="current-password" maxLength={128} required />
+          <input name="currentPassword" type="password" autoComplete="current-password" maxLength={passwordLength.max} required />
         </label>
         <label className="field">Nova senha
-          <input name="password" type="password" autoComplete="new-password" minLength={12} maxLength={128} required />
-          <small>Use de 12 a 128 caracteres.</small>
+          <input name="password" type="password" autoComplete="new-password" minLength={passwordLength.min} maxLength={passwordLength.max} required />
+          <small>Use de {passwordLengthText} caracteres.</small>
         </label>
         <label className="field">Repita a nova senha
-          <input name="confirmation" type="password" autoComplete="new-password" minLength={12} maxLength={128} required />
+          <input name="confirmation" type="password" autoComplete="new-password" minLength={passwordLength.min} maxLength={passwordLength.max} required />
         </label>
       </ActionForm>
     </section>

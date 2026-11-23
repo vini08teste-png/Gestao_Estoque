@@ -395,6 +395,7 @@ test("colaborador terceirizado pode liderar a equipe da unidade onde atua", asyn
   const email = `encarregado-luk-${scenario.tag}@example.test`;
   const adminEmail = `admin-luk-${scenario.tag}@example.test`;
   const password = scenario.supervisor.password;
+  const temporaryPassword = "Tmp-61";
   await db.user.create({ data: {
     email: adminEmail,
     passwordHash: scenario.supervisor.passwordHash,
@@ -423,7 +424,7 @@ test("colaborador terceirizado pode liderar a equipe da unidade onde atua", asyn
   await contractor.getByRole("link", { name: /Configurar acesso/ }).click();
   await expect(page.locator('select[name="employee"] option:checked')).toContainText("LUK");
   await page.getByLabel(/E-mail usado no login/).fill(email);
-  await page.getByLabel(/Senha temporária/).fill(password);
+  await page.getByLabel(/Senha temporária/).fill(temporaryPassword);
   await page.getByLabel(/Perfil de trabalho/).selectOption("SUPERVISOR");
   await page.getByRole("button", { name: "Salvar", exact: true }).click();
   await expect(page.getByRole("status")).toHaveText("Alterações salvas.");
@@ -440,11 +441,11 @@ test("colaborador terceirizado pode liderar a equipe da unidade onde atua", asyn
 
   await signOut(page);
   await page.getByLabel("E-mail").fill(email);
-  await page.getByLabel("Senha", { exact: true }).fill(password);
+  await page.getByLabel("Senha", { exact: true }).fill(temporaryPassword);
   await page.getByRole("button", { name: "Entrar", exact: true }).click();
   await expect(page).toHaveURL(/\/conta\/senha$/);
-  const newPassword = `Nova-${randomUUID()}`;
-  await page.locator('input[name="currentPassword"]').fill(password);
+  const newPassword = "Nov-62";
+  await page.locator('input[name="currentPassword"]').fill(temporaryPassword);
   await page.locator('input[name="password"]').fill(newPassword);
   await page.locator('input[name="confirmation"]').fill(newPassword);
   await page.getByRole("button", { name: "Salvar nova senha" }).click();
