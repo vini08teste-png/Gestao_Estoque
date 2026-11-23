@@ -5,6 +5,8 @@ import { canAdminister, type AccessScope } from "./auth";
 export const canAddEmployees = (scope: AccessScope) =>
   canAdminister(scope) || scope.role === "MANAGER" || (scope.role === "SUPERVISOR" && scope.employee?.active === true);
 
+export const canGrantSupervisorAccess = (scope: AccessScope) => scope.role === "MANAGER";
+
 export function unitsWhere(scope: AccessScope): Prisma.UnitWhereInput {
   const companyId = scope.companyId;
   if (scope.role === "EMPLOYEE" || scope.role === "SUPERVISOR") {

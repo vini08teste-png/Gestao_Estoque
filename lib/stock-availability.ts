@@ -17,7 +17,7 @@ type StockBalance = {
   unit: string;
   equipment: string;
   quantity: number;
-  largestLot: number;
+  largestWarehouse: number;
 };
 
 export async function stockBalances(scope: AccessScope, unitIds: string[] = [], equipmentIds: string[] = [], personal = false) {
@@ -31,19 +31,24 @@ export async function stockBalances(scope: AccessScope, unitIds: string[] = [], 
     },
     select: {
       quantity: true,
+      warehouseId: true,
       warehouse: { select: { unit: { select: { id: true, name: true } } } },
       lot: { select: { expiresAt: true, blocked: true, equipment: { select: { id: true, name: true } } } },
     },
   });
   const balances = new Map<string, StockBalance>();
+  const warehouseTotals = new Map<string, number>();
   for (const row of rows) {
     const { unit } = row.warehouse;
     const { equipment, blocked, expiresAt } = row.lot;
     const key = stockKey(unit.id, equipment.id);
-    const balance = balances.get(key) ?? { unit: unit.name, equipment: equipment.name, quantity: 0, largestLot: 0 };
+    const balance = balances.get(key) ?? { unit: unit.name, equipment: equipment.name, quantity: 0, largestWarehouse: 0 };
     if (!blocked && (!expiresAt || expiresAt >= today)) {
       balance.quantity += row.quantity;
-      balance.largestLot = Math.max(balance.largestLot, row.quantity);
+      const warehouseKey = JSON.stringify([row.warehouseId, equipment.id]);
+      const quantity = (warehouseTotals.get(warehouseKey) ?? 0) + row.quantity;
+      warehouseTotals.set(warehouseKey, quantity);
+      balance.largestWarehouse = Math.max(balance.largestWarehouse, quantity);
     }
     balances.set(key, balance);
   }
@@ -63,7 +68,7 @@ export async function stockAlerts(scope: AccessScope, unitId = "") {
   for (const row of settings) {
     const key = stockKey(row.unitId, row.equipmentId);
     thresholds.set(key, row.quantity);
-    if (!balances.has(key)) balances.set(key, { unit: row.unit.name, equipment: row.equipment.name, quantity: 0, largestLot: 0 });
+    if (!balances.has(key)) balances.set(key, { unit: row.unit.name, equipment: row.equipment.name, quantity: 0, largestWarehouse: 0 });
   }
   return [...balances.entries()].map(([key, row]) => [key, { ...row, minimum: thresholds.get(key) ?? defaultStockMinimum }] as const)
     .filter(([, row]) => row.quantity <= row.minimum)
@@ -96,9 +101,9 @@ export async function stockDemand(scope: AccessScope, unitId = "") {
 
 export function requestAvailability(balance: StockBalance | undefined, requested: number) {
   const quantity = balance?.quantity ?? 0;
-  if ((balance?.largestLot ?? 0) >= requested) return { ready: true, label: "Disponível em estoque", tone: "active", detail: `Saldo disponível na unidade: ${quantity} un.` };
-  if (quantity >= requested) return { ready: false, label: "Saldo dividido entre lotes", tone: "deadline-warning",
-    detail: "A quantidade está disponível na unidade, distribuída entre lotes. O atendimento precisa de um lote com o saldo completo." };
+  if ((balance?.largestWarehouse ?? 0) >= requested) return { ready: true, label: "Disponível em estoque", tone: "active", detail: `Saldo disponível na unidade: ${quantity} un.` };
+  if (quantity >= requested) return { ready: false, label: "Saldo dividido entre almoxarifados", tone: "deadline-warning",
+    detail: "Transfira ou reponha o saldo para atender o pedido em um único almoxarifado." };
   return {
     ready: false,
     label: quantity ? "Saldo insuficiente" : "Sem saldo disponível",

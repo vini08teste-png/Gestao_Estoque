@@ -5,7 +5,7 @@
 | Perfil | O que pode fazer |
 | --- | --- |
 | **Administrador** | Administrar a empresa, as unidades, os cadastros, os acessos, as regras e os prazos de alerta. Também pode operar o estoque e as entregas da empresa. |
-| **Gestor** | Consultar as equipes, cadastrar pessoas e operar o estoque, as solicitações e as entregas nas unidades autorizadas. |
+| **Gestor** | Consultar as equipes, cadastrar pessoas, conceder acesso de encarregado e operar o estoque, as solicitações e as entregas nas unidades autorizadas. |
 | **Encarregado** | Acompanhar e cadastrar integrantes da equipe direta na própria unidade. Pode operar o estoque da unidade e atender pedidos e entregas no escopo da equipe. A decisão de aprovação aparece quando esse fluxo está ativado. |
 | **Almoxarifado** | Consultar colaboradores no escopo, cadastrar itens e lotes, operar o estoque e atender solicitações e entregas nas unidades autorizadas. |
 | **Colaborador** | Consultar o próprio cadastro, solicitar itens, acompanhar os pedidos, confirmar recebimentos, pedir trocas e retirar itens de uso. |
@@ -32,6 +32,14 @@ O administrador edita registros existentes. Para corrigir a unidade de um cadast
 5. Na primeira entrada com senha temporária, a pessoa cria a própria senha e depois entra de novo.
 
 Para cadastrar alguém da **LUK** como encarregado, informe LUK no cadastro, atribua o perfil **Encarregado** no acesso e selecione essa pessoa em **Encarregado responsável** nos cadastros de sua equipe. Por exemplo, alguém da LUK pode liderar colaboradores da TSA Lynx na unidade onde todos atuam.
+
+### Conceder acesso de encarregado como gestor
+
+1. Abra **Equipe**, expanda o cartão da pessoa e clique em **Dar acesso de encarregado**. A opção vale para colaboradores ativos, inclusive terceirizados, nas unidades autorizadas ao gestor.
+2. Se a pessoa já tiver o perfil **Colaborador** ativo, confirme a alteração. Ela usará o mesmo e-mail e a mesma senha.
+3. Para criar um login, informe um e-mail ainda sem conta e uma senha temporária de 6 a 128 caracteres. Contas com outro perfil ou vínculos preexistentes pelo e-mail passam pela revisão de um administrador.
+
+O acesso segue a unidade do cadastro da pessoa. A equipe direta é definida pelo campo **Encarregado responsável** nos cadastros dos integrantes.
 
 ## Troca e redefinição de senha
 

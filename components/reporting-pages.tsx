@@ -6,7 +6,7 @@ import { Icon } from "@/components/icon";
 import { canAdminister, type AccessScope } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { employeesWhere } from "@/lib/directory";
-import { hasPersonalEquipment } from "@/lib/equipment-access";
+import { deliveriesAwaitingReceipt, hasPersonalEquipment } from "@/lib/equipment-access";
 import { formatDay, inputDay, plusDays, requestLabels, todayInBrazil } from "@/lib/equipment";
 import { roles } from "@/lib/organization";
 import { defaultStockMinimum, stockAlerts, stockDemand } from "@/lib/stock-availability";
@@ -43,9 +43,9 @@ export async function Dashboard({ scope }: { scope: AccessScope }) {
   const today = todayInBrazil();
   const deliveryScope = unitDeliveryWhere(scope, "", personal);
   const openRequests = { ...unitRequestWhere(scope, "", personal), status: { in: [...openRequestStatuses()] } };
-  const unconfirmed = { AND: [deliveryScope, { receipt: null, retirement: null }] };
+  const unconfirmed = { AND: [deliveryScope, { ...deliveriesAwaitingReceipt, retirement: null }] };
   const deliveryFields = {
-    id: true, quantity: true, deliveredAt: true, receipt: { select: { deliveryId: true } },
+    id: true, quantity: true, deliveredAt: true, warehouseId: true, receipt: { select: { deliveryId: true } },
     employee: { select: { name: true } }, equipment: { select: { name: true } },
   } as const;
   const [deadlines, shortages, demand, requests, receipts, deliveries, employees, latest, pendingRequests, pendingReceipts] = await Promise.all([
@@ -158,7 +158,7 @@ export async function Dashboard({ scope }: { scope: AccessScope }) {
             {latest.map((row) => <li key={row.id}>
               <div>
                 <span><strong>{row.equipment.name}</strong><small>{detail(row.employee.name, row.quantity)} · {formatDay(row.deliveredAt)}</small></span>
-                <span className={`badge ${row.receipt ? "active" : "deadline-warning"}`}>{row.receipt ? "Confirmado" : "Aguardando confirmação"}</span>
+                <span className={`badge ${!row.warehouseId ? "" : row.receipt ? "active" : "deadline-warning"}`}>{!row.warehouseId ? "Ficha de papel" : row.receipt ? "Confirmado" : "Aguardando confirmação"}</span>
               </div>
             </li>)}
           </ul> : <p className="empty">Nenhuma entrega registrada.</p>}
@@ -260,7 +260,7 @@ export async function Alerts({ scope, query }: { scope: AccessScope; query: Quer
             {list.length === 0 ? <p className="empty">Nenhum prazo nesta janela.</p> :
               <div className="table-scroll" role="region" aria-label={alertLabels[type]} tabIndex={0}>
                 <table>
-                  <thead><tr>{["Item", type === "ca" ? "CA" : "Lote e almoxarifado",
+                  <thead><tr>{["Item", type === "ca" ? "CA" : "Almoxarifado",
                     ...(type === "ca" ? [] : ["Unidade"]), "Prazo", "Situação"].map((label) => <th scope="col" key={label}>{label}</th>)}</tr></thead>
                   <tbody>{list.map((row) => {
                     const status = deadlineStatus(row, today, thresholds);
@@ -277,7 +277,7 @@ export async function Alerts({ scope, query }: { scope: AccessScope; query: Quer
     {!operationsOnly && canAdminister(scope) && <details className="panel editor deadline-settings">
       <summary>Configurar prazos de alerta</summary>
       <ActionForm action={saveAlertDays.bind(null, scope.companyId)}>
-        <p>Escolha três prazos em dias, em ordem crescente, para os alertas de validade do CA e de lotes.</p>
+        <p>Escolha três prazos em dias, em ordem crescente, para os alertas de validade do CA e do produto.</p>
         <div className="form-grid">
           {([["short", "Prazo curto"], ["medium", "Prazo intermediário"], ["long", "Prazo mais longo"]] as const).map(([name, label], index) =>
             <label className="field" key={name}>{label}<input name={name} type="number" min={1} max={365} defaultValue={thresholds[index]} required /></label>)}

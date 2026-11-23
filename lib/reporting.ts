@@ -3,12 +3,12 @@ import type { Prisma } from "@/generated/prisma/client";
 import type { AccessScope } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { unitsWhere } from "@/lib/directory";
-import { operationalDeliveryWhere, ownEmployeeId, requestWhere } from "@/lib/equipment-access";
+import { deliveriesAwaitingReceipt, operationalDeliveryWhere, ownEmployeeId, requestWhere } from "@/lib/equipment-access";
 import { brazilDay, formatDay, plusDays, requestLabels, todayInBrazil } from "@/lib/equipment";
 
 export const alertLabels = {
   ca: "Validade do CA",
-  lote: "Validade de produto ou lote",
+  lote: "Validade do produto",
 };
 
 export const reportLabels = {
@@ -86,7 +86,7 @@ export function deadlineStatus(row: Deadline, today: Date, thresholds: number[])
 export function unitDeliveryWhere(scope: AccessScope, unit = "", personal = false): Prisma.DeliveryWhereInput {
   if (personal || scope.role === "EMPLOYEE") return { companyId: scope.companyId, employeeId: ownEmployeeId(scope) };
   const access = operationalDeliveryWhere(scope);
-  return unit ? { AND: [access, { stock: { warehouse: { unitId: unit } } }] } : access;
+  return unit ? { AND: [access, { OR: [{ stock: { warehouse: { unitId: unit } } }, { warehouseId: null, employee: { unitId: unit } }] }] } : access;
 }
 
 export function unitRequestWhere(scope: AccessScope, unit = "", personal = false): Prisma.EquipmentRequestWhereInput {
@@ -114,7 +114,7 @@ export async function listDeadlines(scope: AccessScope, {
       select: {
         warehouseId: true, lotId: true,
         warehouse: { select: { name: true, unit: { select: { name: true } } } },
-        lot: { select: { expiresAt: true, code: true, equipment: { select: { name: true } } } },
+        lot: { select: { expiresAt: true, equipment: { select: { name: true } } } },
       },
     }) : [],
   ]);
@@ -124,7 +124,7 @@ export async function listDeadlines(scope: AccessScope, {
     }] : []),
     ...lots.flatMap((row) => row.lot.expiresAt ? [{
       id: row.warehouseId + "/" + row.lotId, kind: "lote" as const, equipment: row.lot.equipment.name,
-      reference: `${row.lot.code} · ${row.warehouse.name}`, unit: row.warehouse.unit.name, due: row.lot.expiresAt,
+      reference: row.warehouse.name, unit: row.warehouse.unit.name, due: row.lot.expiresAt,
     }] : []),
   ];
   return result.sort((a, b) => a.due.getTime() - b.due.getTime() || a.equipment.localeCompare(b.equipment, "pt-BR"));
@@ -150,23 +150,23 @@ export async function reportRows(scope: AccessScope, kind: ReportKind, filters: 
   const access = unitDeliveryWhere(scope, unit);
   const deliveries = await db.delivery.findMany({
     where: {
-      AND: [access, { deliveredAt: { gte: begin, lte: end } }, ...(kind === "pendencias" ? [{ receipt: null }] : [])],
+      AND: [access, { deliveredAt: { gte: begin, lte: end } }, ...(kind === "pendencias" ? [deliveriesAwaitingReceipt] : [])],
     },
     select: {
       deliveredAt: true, quantity: true,
-      employee: { select: { name: true, registration: true } },
+      employee: { select: { name: true, registration: true, unit: { select: { name: true } } } },
       equipment: { select: { name: true } },
-      stock: { select: { warehouse: { select: { name: true, unit: { select: { name: true } } } }, lot: { select: { code: true } } } },
+      stock: { select: { warehouse: { select: { name: true, unit: { select: { name: true } } } } } },
       receipt: { select: { confirmedAt: true } },
     },
     orderBy: [{ deliveredAt: "desc" }, { id: "desc" }],
   });
   if (kind === "entregas") return {
-    columns: ["Empresa", "Unidade", "Almoxarifado", "Matrícula", "Colaborador", "Item", "Lote", "Quantidade", "Entrega", "Recebimento"],
+    columns: ["Empresa", "Unidade", "Almoxarifado", "Matrícula", "Colaborador", "Item", "Quantidade", "Data", "Recebimento"],
     rows: deliveries.map((row) => [
-      company, row.stock.warehouse.unit.name, row.stock.warehouse.name, row.employee.registration, row.employee.name,
-      row.equipment.name, row.stock.lot.code, row.quantity, formatDay(row.deliveredAt),
-      row.receipt ? "Confirmado" : "Aguardando confirmação",
+      company, row.stock?.warehouse.unit.name ?? row.employee.unit.name, row.stock?.warehouse.name ?? "—", row.employee.registration, row.employee.name,
+      row.equipment.name, row.quantity, formatDay(row.deliveredAt),
+      !row.stock ? "Ficha de papel" : row.receipt ? "Confirmado" : "Aguardando confirmação",
     ]),
   };
 
@@ -182,7 +182,7 @@ export async function reportRows(scope: AccessScope, kind: ReportKind, filters: 
       equipment: row.equipment?.name ?? row.requestedItem ?? "", quantity: row.quantity, status: requestLabels[row.status],
     })),
     ...deliveries.map((row) => ({
-      date: row.deliveredAt, type: "Recebimento", unit: row.stock.warehouse.unit.name, employee: row.employee,
+      date: row.deliveredAt, type: "Recebimento", unit: row.stock?.warehouse.unit.name ?? row.employee.unit.name, employee: row.employee,
       equipment: row.equipment.name, quantity: row.quantity, status: "Aguardando confirmação",
     })),
   ];

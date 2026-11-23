@@ -12,6 +12,7 @@ import { employeesWhere, unitsWhere } from "@/lib/directory";
 import { canSetStockMinimum, handlesStock, hasPersonalEquipment, ownEmployeeId, requestWhere } from "@/lib/equipment-access";
 import { brazilDay, jobTitleKey, retirementLabels, todayInBrazil } from "@/lib/equipment";
 import { text, type FormResult } from "@/lib/forms";
+import { availableLotWhere } from "@/lib/stock-availability";
 
 class InputError extends Error {}
 const invalid = (message: string): never => { throw new InputError(message); };
@@ -85,48 +86,39 @@ export async function saveEquipment(companyId: string, id: string | null, _: For
 }
 
 export async function saveWarehouse(companyId: string, _: FormResult, data: FormData) {
-  return mutate(companyId, handlesStock, async (tx, scope) => {
+  const result = await mutate(companyId, handlesStock, async (tx, scope) => {
     const unitId = field(data, "unit", "Unidade");
     const unit = await tx.unit.findFirst({ where: { AND: [unitsWhere(scope), { id: unitId, active: true }] } });
     if (!unit) return invalid("Selecione uma unidade ativa no seu escopo.");
     await tx.warehouse.create({ data: { companyId, unitId, name: field(data, "name", "Nome") } });
   });
-}
-
-export async function saveLot(companyId: string, _: FormResult, data: FormData) {
-  return mutate(companyId, handlesStock, async (tx) => {
-    const equipmentId = field(data, "equipment", "Item");
-    if (!await tx.equipment.findUnique({ where: { companyId_id: { companyId, id: equipmentId }, active: true } })) {
-      return invalid("Selecione um item ativo desta empresa.");
-    }
-    const code = field(data, "code", "Código do lote", 60).toUpperCase();
-    const date = text(data, "expiresAt");
-    const expiresAt = date ? parseDay(date) : null;
-    await tx.equipmentLot.create({ data: { companyId, equipmentId, code, expiresAt } });
-  });
-}
-
-export async function setLotBlocked(companyId: string, lotId: string, block: boolean, _: FormResult) {
-  return mutate(companyId, canAdminister, async (tx) => {
-    await tx.equipmentLot.update({ where: { companyId_id: { companyId, id: lotId } }, data: { blocked: block } });
-  });
+  if (result.success) redirect(`/${companyId}/estoque`);
+  return result;
 }
 
 export async function addStock(companyId: string, _: FormResult, data: FormData) {
   return mutate(companyId, handlesStock, async (tx, scope, actorId) => {
     const warehouseId = field(data, "warehouse", "Almoxarifado");
-    const lotId = field(data, "lot", "Lote");
+    const equipmentId = field(data, "equipment", "Item");
     const quantity = count(data);
     const warehouse = await tx.warehouse.findFirst({
       where: { companyId, id: warehouseId, active: true, unit: { ...unitsWhere(scope), active: true } },
     });
     if (!warehouse) return invalid("Selecione um almoxarifado ativo da sua unidade.");
-    if (!await tx.equipmentLot.findFirst({ where: { companyId, id: lotId, equipment: { active: true } } })) {
-      return invalid("Selecione um lote de um item ativo desta empresa.");
+    if (!await tx.equipment.findUnique({ where: { companyId_id: { companyId, id: equipmentId }, active: true } })) {
+      return invalid("Selecione um item ativo desta empresa.");
     }
-    const key = { companyId, warehouseId, lotId };
+    const date = text(data, "expiresAt");
+    const expiresAt = date ? parseDay(date) : null;
+    const code = `@ESTOQUE:${date || "SEM-VALIDADE"}`;
+    const lot = await tx.equipmentLot.upsert({
+      where: { companyId_equipmentId_code: { companyId, equipmentId, code } },
+      create: { companyId, equipmentId, code, expiresAt }, update: {}, select: { id: true, blocked: true },
+    });
+    if (lot.blocked) return invalid("Este item está bloqueado para esta validade.");
+    const key = { companyId, warehouseId, lotId: lot.id };
     const balance = await tx.stock.findUnique({ where: { companyId_warehouseId_lotId: key }, select: { quantity: true } });
-    if ((balance?.quantity ?? 0) > 2_147_483_647 - quantity) return invalid("A entrada ultrapassa o limite de quantidade do lote.");
+    if ((balance?.quantity ?? 0) > 2_147_483_647 - quantity) return invalid("A entrada ultrapassa o limite de quantidade.");
     await tx.stock.upsert({
       where: { companyId_warehouseId_lotId: key }, create: { ...key, quantity }, update: { quantity: { increment: quantity } },
     });
@@ -213,13 +205,14 @@ async function latestOwnedDelivery(tx: Prisma.TransactionClient, scope: AccessSc
   const delivery = await tx.delivery.findUnique({
     where: { companyId_id: { companyId, id: deliveryId }, employeeId },
     select: {
-      equipmentId: true, equipment: { select: { name: true, active: true } },
+      equipmentId: true, warehouseId: true, equipment: { select: { name: true, active: true } },
       receipt: { select: { deliveryId: true } }, retirement: { select: { deliveryId: true } },
     },
   });
   if (!delivery) return invalid("A entrega não está disponível na sua área pessoal.");
   const latest = await tx.delivery.findFirst({
-    where: { companyId, employeeId, equipmentId: delivery.equipmentId, ...(delivery.receipt && { receipt: { isNot: null } }) },
+    where: { companyId, employeeId, equipmentId: delivery.equipmentId,
+      ...((delivery.receipt || !delivery.warehouseId) && { OR: [{ receipt: { isNot: null } }, { warehouseId: null }] }) },
     orderBy: [{ deliveredAt: "desc" }, { createdAt: "desc" }, { id: "desc" }],
     select: { id: true },
   });
@@ -328,49 +321,60 @@ async function readAttachment(data: FormData, fieldName: "proof" | "replacementP
   return { data: { mime, content, sha256: createHash("sha256").update(content).digest("hex") }, name: file.name.slice(0, 180) };
 }
 
-export async function registerDelivery(companyId: string, id: string, requestId: string | null, _: FormResult, data: FormData) {
+export async function registerDelivery(companyId: string, id: string, requestId: string | null, paper: boolean, _: FormResult, data: FormData) {
   const result = await mutate(companyId, handlesStock, async (tx, scope, actorId) => {
     if (await tx.delivery.findUnique({ where: { companyId_id: { companyId, id }, actorId } })) return;
     const request = requestId ? await tx.equipmentRequest.findFirst({ where: { ...requestWhere(scope), id: requestId } }) : null;
     if (requestId && (!request || request.status !== "WAITING_DELIVERY")) return invalid("Esta solicitação não aguarda entrega.");
     const employeeId = request?.employeeId ?? field(data, "employee", "Colaborador");
-    const employee = await tx.employee.findFirst({ where: { ...employeesWhere(scope), id: employeeId, active: true } });
+    const employee = await tx.employee.findFirst({ where: { ...employeesWhere(scope), id: employeeId, active: true, unit: { active: true } } });
     if (!employee || (request && request.unitId !== employee.unitId)) return invalid("O colaborador não está ativo na unidade da solicitação ou no seu escopo.");
-    const [warehouseId, lotId] = field(data, "stock", "Almoxarifado e lote", 250).split("|");
-    if (!warehouseId || !lotId) return invalid("Selecione um almoxarifado e lote.");
-    const stock = await tx.stock.findUnique({
-      where: { companyId_warehouseId_lotId: { companyId, warehouseId, lotId } },
-      include: { lot: { include: { equipment: true } }, warehouse: { include: { unit: { select: { active: true } } } } },
-    });
-    if (!stock || !stock.warehouse.active || !stock.warehouse.unit.active || stock.warehouse.unitId !== employee.unitId) {
-      return invalid("Selecione um lote com saldo no almoxarifado da unidade do colaborador.");
+    const equipmentId = request ? request.equipmentId : field(data, "equipment", "Item");
+    if (!equipmentId || !await tx.equipment.findUnique({ where: { companyId_id: { companyId, id: equipmentId }, active: true } })) {
+      return invalid("Selecione um item ativo desta empresa.");
     }
-    const { lot } = stock;
     const today = todayInBrazil();
-    if (!lot.equipment.active || lot.blocked || (lot.expiresAt && lot.expiresAt < today)) return invalid("O lote está vencido, bloqueado ou vinculado a um item inativo.");
-    if (request && request.equipmentId !== lot.equipmentId) return invalid("O lote deve pertencer ao item solicitado.");
     const quantity = request?.quantity ?? count(data);
     const deliveredAt = parseDay(text(data, "deliveredAt"));
     if (deliveredAt > today) return invalid("A data da entrega não pode ser futura.");
     if (request && deliveredAt < brazilDay(request.openedAt)) return invalid("A data não pode ser anterior à abertura da solicitação.");
     const proof = await readAttachment(data, "proof");
-    const key = { companyId, warehouseId, lotId };
-    const balance = await tx.stock.updateMany({
-      where: { ...key, quantity: { gte: quantity } }, data: { quantity: { decrement: quantity } },
-    });
-    if (balance.count !== 1) return invalid("Saldo insuficiente para atender a quantidade completa.");
+    const warehouseId = paper ? null : field(data, "warehouse", "Almoxarifado");
+    const stocks = warehouseId ? await tx.stock.findMany({
+      where: { companyId, warehouseId, quantity: { gt: 0 }, warehouse: { active: true, unitId: employee.unitId },
+        lot: { ...availableLotWhere(today), equipmentId } },
+      orderBy: [{ lot: { expiresAt: { sort: "asc", nulls: "last" } } }, { lotId: "asc" }],
+      select: { lotId: true, quantity: true },
+    }) : [];
+    if (!paper && stocks.reduce((total, stock) => total + stock.quantity, 0) < quantity) {
+      return invalid("O almoxarifado selecionado não tem saldo disponível suficiente para este item.");
+    }
     await tx.delivery.create({
-      data: { ...key, id, employeeId, actorId, equipmentId: lot.equipmentId, quantity, deliveredAt,
+      data: { companyId, warehouseId, lotId: stocks[0]?.lotId ?? null, id, employeeId, actorId, equipmentId, quantity, deliveredAt,
         requestId: request?.id, ...(proof && { proof: { create: { ...proof.data, name: proof.name } } }) },
     });
-    await tx.stockMovement.create({ data: { ...key, actorId, delta: -quantity, deliveryId: id } });
-    await tx.equipmentEvent.create({ data: { companyId, subjectId: id, actorId, kind: "DELIVERED" } });
+    if (warehouseId) {
+      let remaining = quantity;
+      for (const stock of stocks) {
+        if (!remaining) break;
+        const allocated = Math.min(remaining, stock.quantity);
+        const key = { companyId, warehouseId, lotId: stock.lotId };
+        const balance = await tx.stock.updateMany({
+          where: { ...key, quantity: { gte: allocated } }, data: { quantity: { decrement: allocated } },
+        });
+        if (balance.count !== 1) return invalid("O saldo mudou. Confira a quantidade disponível e tente novamente.");
+        await tx.stockMovement.create({ data: { ...key, actorId, delta: -allocated, deliveryId: id } });
+        remaining -= allocated;
+      }
+    }
+    await tx.equipmentEvent.create({ data: { companyId, subjectId: id, actorId, kind: paper ? "PAPER_RECORDED" : "DELIVERED" } });
     if (request) {
       await tx.equipmentRequest.update({ where: { companyId_id: { companyId, id: request.id } }, data: { status: "COMPLETED" } });
       await tx.equipmentEvent.create({ data: { companyId, subjectId: request.id, actorId, kind: "COMPLETED" } });
     }
   });
-  if (result.success) redirect(`/${companyId}/entregas?registrada=1`);
+  if (result.success) redirect(`/${companyId}/entregas?${paper ?
+    `registrada=ficha&colaborador=${encodeURIComponent(text(data, "employee"))}` : "registrada=1"}`);
   return result;
 }
 

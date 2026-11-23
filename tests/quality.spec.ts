@@ -26,6 +26,128 @@ async function signOut(page: Page) {
   await expect(page).toHaveURL(/\/login$/);
 }
 
+test("almoxarifado sem saldo aparece e ficha de papel registra o item sem movimentação", async ({ page }) => {
+  const companyId = "tsa";
+  const name = `Almoxarifado novo ${scenario.tag}`;
+  await signIn(page, scenario.manager);
+  await page.goto("/tsa/estoque?acao=almoxarifado");
+  await page.getByLabel("Nome do almoxarifado").fill(name);
+  await page.getByLabel("Unidade").selectOption(scenario.unit.id);
+  await page.getByRole("button", { name: "Cadastrar almoxarifado" }).click();
+  await expect(page).toHaveURL(/\/tsa\/estoque$/);
+  const warehouseRow = page.getByRole("row").filter({ hasText: name });
+  await expect(warehouseRow).toContainText("Aguardando primeira entrada");
+  const warehouse = await db.warehouse.findFirstOrThrow({ where: { companyId, name } });
+  await warehouseRow.getByRole("link", { name: "Registrar entrada" }).click();
+  await expect(page.getByRole("combobox", { name: "Almoxarifado", exact: true })).toHaveValue(warehouse.id);
+  await page.getByRole("combobox", { name: "Item", exact: true }).selectOption(scenario.uniform.item.id);
+  await page.getByLabel("Quantidade").fill("2");
+  await page.getByRole("button", { name: "Registrar entrada" }).click();
+  await expect(page.getByText("Alterações salvas.")).toBeVisible();
+
+  await page.goto(`/tsa/entregas?edit=ficha&colaborador=${scenario.worker.id}`);
+  await expect(page.getByLabel("Colaborador")).toHaveValue(scenario.worker.id);
+  await expect(page.getByLabel("Almoxarifado")).toHaveCount(0);
+  await page.getByLabel("Item", { exact: true }).selectOption(scenario.uniform.item.id);
+  await page.getByLabel("Quantidade").fill("4");
+  await page.getByLabel("Data da ficha").fill("2025-10-07");
+  await page.getByRole("button", { name: "Registrar item" }).click();
+  await expect(page.getByText("Item da ficha registrado.")).toBeVisible();
+  const recorded = await db.delivery.findFirstOrThrow({
+    where: { companyId, employeeId: scenario.worker.id, warehouseId: null }, include: { movements: true, receipt: true },
+  });
+  expect(recorded).toMatchObject({ lotId: null, quantity: 4, movements: [], receipt: null });
+  const balance = await db.stock.findFirstOrThrow({ where: { companyId, warehouseId: warehouse.id } });
+  expect(balance.quantity).toBe(2);
+
+  await signOut(page);
+  await signIn(page, scenario.employeeAccount);
+  await page.goto("/tsa/meus-epis");
+  await expect(page.getByRole("region", { name: "Itens em uso" }).getByText(scenario.uniform.item.name)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Confirmo que recebi" })).toHaveCount(0);
+  expect((await page.request.get("/tsa/entregas?edit=ficha")).status()).toBe(404);
+  await db.delivery.delete({ where: { companyId_id: { companyId, id: recorded.id } } });
+  await db.warehouse.update({ where: { companyId_id: { companyId, id: warehouse.id } }, data: { active: false } });
+});
+
+test("uma entrega por item usa o saldo combinado do almoxarifado", async ({ page }) => {
+  const companyId = "tsa";
+  const item = await db.equipment.create({ data: {
+    companyId, name: `Uniforme com duas entradas ${scenario.tag}`, category: "UNIFORM", makerModel: "Teste", notes: "",
+  } });
+  const lots = await Promise.all(["A", "B"].map((code) => db.equipmentLot.create({
+    data: { companyId, equipmentId: item.id, code },
+  })));
+  const warehouseId = scenario.warehouse.id;
+  await db.stock.createMany({ data: lots.map(({ id }) => ({ companyId, warehouseId, lotId: id, quantity: 2 })) });
+  await signIn(page, scenario.operator);
+  await page.goto("/tsa/entregas?edit=novo");
+  await page.getByLabel("Colaborador").selectOption(scenario.worker.id);
+  await page.getByLabel("Almoxarifado", { exact: true }).selectOption(warehouseId);
+  await page.getByLabel("Item", { exact: true }).selectOption(item.id);
+  await page.getByLabel("Quantidade").fill("3");
+  await page.getByRole("button", { name: "Confirmar entrega" }).click();
+  await expect(page.getByText("Entrega registrada e saldo atualizado.")).toBeVisible();
+  const delivery = await db.delivery.findFirstOrThrow({ where: { companyId, equipmentId: item.id }, include: { movements: true } });
+  expect(delivery.quantity).toBe(3);
+  expect(delivery.movements.map(({ delta }) => delta).sort()).toEqual([-1, -2]);
+  await db.deliveryReceipt.create({ data: { companyId, deliveryId: delivery.id, actorId: scenario.employeeAccount.id } });
+});
+
+test("gestor concede acesso de encarregado dentro das unidades autorizadas", async ({ page }) => {
+  const companyId = "tsa";
+  const person = await db.employee.create({ data: {
+    companyId, unitId: scenario.unit.id, registration: `LUK-${scenario.tag}`,
+    name: `Técnica de segurança ${scenario.tag}`, contractorCompany: "LUK", department: "Segurança", jobTitle: "Técnica de segurança",
+  } });
+  const accessUrl = (id: string) => `/tsa/colaboradores?encarregado=${id}`;
+  const openGrant = async (name: string) => {
+    await page.goto("/tsa/colaboradores");
+    const card = page.locator(".team-member").filter({ has: page.getByText(name, { exact: true }) });
+    await card.locator("summary").click();
+    await card.getByRole("link", { name: "Dar acesso de encarregado" }).click();
+  };
+
+  await signIn(page, scenario.operator);
+  expect((await page.request.get(accessUrl(person.id))).status()).toBe(404);
+  await signOut(page);
+  await signIn(page, scenario.manager);
+  expect((await page.request.get(accessUrl(scenario.outside.id))).status()).toBe(404);
+  expect((await page.request.get("/tsa/usuarios")).status()).toBe(404);
+
+  await openGrant(person.name);
+  await page.getByLabel("E-mail de acesso").fill(scenario.employeeAccount.email);
+  await page.getByLabel("Senha temporária").fill("Inicial7");
+  await page.getByRole("button", { name: "Dar acesso de encarregado" }).click();
+  await expect(page.locator("form").getByRole("alert")).toContainText("Este e-mail já tem uma conta.");
+  const email = `tecnica-luk-${scenario.tag}@example.test`;
+  await page.getByLabel("E-mail de acesso").fill(email);
+  await page.getByLabel("Senha temporária").fill("Inicial7");
+  await page.getByRole("button", { name: "Dar acesso de encarregado" }).click();
+  await expect(page.getByText("Acesso de encarregado ativo.")).toBeVisible();
+  const created = await db.user.findUniqueOrThrow({ where: { email }, include: { scopes: true } });
+  expect(created.mustChangePassword).toBe(true);
+  expect(created.scopes).toMatchObject([{ companyId, employeeId: person.id, role: "SUPERVISOR", active: true, allUnits: false }]);
+
+  const account = await db.user.create({
+    data: { email: `promover-${scenario.tag}@example.test`, passwordHash: scenario.employeeAccount.passwordHash },
+  });
+  const existing = await db.employee.create({ data: {
+    companyId, unitId: scenario.unit.id, registration: `PROM-${scenario.tag}`,
+    name: `Colaborador a promover ${scenario.tag}`, department: "Operação", jobTitle: "Técnico",
+    scope: { create: { userId: account.id, name: "Acesso de teste", role: "EMPLOYEE", allUnits: false } },
+  } });
+  await openGrant(existing.name);
+  await expect(page.getByLabel("Senha temporária")).toHaveCount(0);
+  await page.getByRole("button", { name: "Dar acesso de encarregado" }).click();
+  await expect(page.getByText("Acesso de encarregado ativo.")).toBeVisible();
+  const promoted = await db.userScope.findUniqueOrThrow({
+    where: { companyId_userId: { companyId, userId: account.id } }, include: { user: true },
+  });
+  expect(promoted).toMatchObject({ employeeId: existing.id, role: "SUPERVISOR", allUnits: false,
+    user: { id: account.id, passwordHash: account.passwordHash, mustChangePassword: false } });
+});
+
 test("restringe histórico, exportação, comprovantes e pedidos à empresa e à unidade", async ({ page }) => {
   await signIn(page, scenario.manager);
   await page.goto("/tsa/entregas");
@@ -110,7 +232,7 @@ test("encarregado rejeita um pedido com justificativa e aprova outro para entreg
   await page.setViewportSize({ width: 360, height: 800 });
   await page.goto("/tsa/solicitacoes?fila=prontos");
   await page.getByRole("article").filter({ hasText: approved.reason }).getByRole("link", { name: "Atender pedido" }).click();
-  await expect(page.getByLabel("Almoxarifado e lote")).toHaveValue(scenario.uniform.stockValue);
+  await expect(page.getByLabel("Almoxarifado", { exact: true })).toHaveValue(scenario.warehouse.id);
   await expect(page.locator(".delivery-summary")).toContainText(scenario.uniform.item.name);
   await page.getByRole("button", { name: "Confirmar entrega" }).click();
   await expect(page.getByRole("status")).toHaveText("Entrega registrada e saldo atualizado.");
@@ -156,7 +278,8 @@ test("duas entregas simultâneas para a última unidade geram uma baixa", async 
     await Promise.all([page, second].map(async (entry) => {
       await entry.goto("/tsa/entregas?edit=novo");
       await entry.getByLabel("Colaborador", { exact: true }).selectOption(scenario.worker.id);
-      await entry.getByLabel("Almoxarifado e lote").selectOption(scenario.scarce.stockValue);
+      await entry.getByLabel("Almoxarifado", { exact: true }).selectOption(scenario.warehouse.id);
+      await entry.getByLabel("Item", { exact: true }).selectOption(scenario.scarce.item.id);
       await expect(entry.getByLabel("Quantidade")).toHaveValue("1");
     }));
     await Promise.all([page, second].map((entry) => entry.getByRole("button", { name: "Confirmar entrega" }).click()));

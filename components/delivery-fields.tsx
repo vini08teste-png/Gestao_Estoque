@@ -3,57 +3,88 @@
 import { useId, useState } from "react";
 
 type Person = { id: string; name: string; unitId: string; unit: { name: string } };
-type StockOption = { key: string; label: string; unitId: string };
+type Warehouse = { id: string; name: string; unitId: string };
+type Item = { id: string; name: string };
+type StockOption = { warehouseId: string; item: Item; quantity: number };
 
-export function DeliveryFields({ people, stocks, today, request }: {
+export function DeliveryFields({ people, warehouses, stocks, items, today, request, paper, employeeId }: {
   people: Person[];
+  warehouses: Warehouse[];
   stocks: StockOption[];
+  items: Item[];
   today: string;
   request?: { name: string; equipment: string; quantity: number; unitId: string; minDate: string };
+  paper: boolean;
+  employeeId: string;
 }) {
-  const [person, setPerson] = useState("");
-  const [stock, setStock] = useState(() => request && stocks.length === 1 ? stocks[0].key : "");
-  const personId = useId();
-  const stockId = useId();
+  const [person, setPerson] = useState(employeeId || (people.length === 1 ? people[0].id : ""));
+  const [selectedWarehouse, setWarehouse] = useState("");
+  const [selectedItem, setItem] = useState("");
+  const personFieldId = useId();
+  const warehouseFieldId = useId();
+  const itemFieldId = useId();
   const proofId = useId();
   const unit = request?.unitId ?? people.find(({ id }) => id === person)?.unitId;
+  const unitWarehouses = warehouses.filter(({ unitId }) => unitId === unit);
+  const warehouseBalances = new Map(stocks.map(({ warehouseId, quantity }) => [warehouseId, quantity]));
+  const defaultWarehouses = request ? unitWarehouses.filter(({ id }) => (warehouseBalances.get(id) ?? 0) >= request.quantity) : unitWarehouses;
+  const warehouse = selectedWarehouse || (defaultWarehouses.length === 1 ? defaultWarehouses[0].id : "");
+  const warehouseStock = stocks.filter(({ warehouseId }) => warehouseId === warehouse);
+  const itemOptions = paper ? items : warehouseStock.map(({ item }) => item);
+  const itemId = selectedItem || (itemOptions.length === 1 ? itemOptions[0].id : "");
+  const quantityAvailable = warehouseStock.find(({ item }) => item.id === itemId)?.quantity;
+  const emptyWarehouse = Boolean(warehouse && !request && !warehouseStock.length);
 
-  return (
-    <>
-      {request ? (
-        <dl className="delivery-summary">
-          <div><dt>Colaborador</dt><dd>{request.name}</dd></div>
-          <div><dt>Item</dt><dd>{request.equipment}</dd></div>
-          <div><dt>Quantidade</dt><dd>{request.quantity}</dd></div>
-        </dl>
-      ) : (
-        <div className="field">
-          <label htmlFor={personId}>Colaborador</label>
-          <select id={personId} name="employee" value={person} onChange={(event) => { setPerson(event.target.value); setStock(""); }} required>
-            <option value="">Selecione o colaborador</option>
-            {people.map(({ id, name, unit }) => <option value={id} key={id}>{name} · {unit.name}</option>)}
-          </select>
-        </div>
-      )}
+  return <>
+    {request ? (
+      <dl className="delivery-summary">
+        <div><dt>Colaborador</dt><dd>{request.name}</dd></div>
+        <div><dt>Item</dt><dd>{request.equipment}</dd></div>
+        <div><dt>Quantidade</dt><dd>{request.quantity}</dd></div>
+      </dl>
+    ) : (
       <div className="field">
-        <label htmlFor={stockId}>Almoxarifado e lote</label>
-        <select id={stockId} name="stock" value={stock} onChange={(event) => setStock(event.target.value)} required disabled={!unit}>
-          <option value="">{unit && !stocks.some((row) => row.unitId === unit) ? "Sem lote disponível para esta entrega" : "Selecione um lote"}</option>
-          {stocks.filter((row) => row.unitId === unit).map(({ key, label }) => <option value={key} key={key}>{label}</option>)}
+        <label htmlFor={personFieldId}>Colaborador</label>
+        <select id={personFieldId} name="employee" value={person} onChange={(event) => { setPerson(event.target.value); setWarehouse(""); setItem(""); }} required>
+          <option value="">Selecione o colaborador</option>
+          {people.map(({ id, name, unit }) => <option value={id} key={id}>{name} · {unit.name}</option>)}
         </select>
       </div>
-      <div className="form-grid">
-        {!request && <label className="field">Quantidade<input name="quantity" type="number" min={1} max={1_000_000} defaultValue={1} required /></label>}
-        <label className="field">Data da entrega<input name="deliveredAt" type="date" defaultValue={today} min={request?.minDate} max={today} required /></label>
+    )}
+    {!paper && <div className="field">
+      <label htmlFor={warehouseFieldId}>Almoxarifado</label>
+      <select id={warehouseFieldId} name="warehouse" value={warehouse} onChange={(event) => { setWarehouse(event.target.value); setItem(""); }}
+        aria-describedby={emptyWarehouse ? warehouseFieldId + "-help" : undefined} required disabled={!unit}>
+        <option value="" disabled>{!unit ? "Selecione primeiro o colaborador" : unitWarehouses.length ? "Selecione o almoxarifado" : "Nenhum almoxarifado ativo nesta unidade"}</option>
+        {unitWarehouses.map(({ id, name }) => <option value={id} key={id}
+          disabled={request ? (warehouseBalances.get(id) ?? 0) < request.quantity : false}>
+          {name}{request && ` · Saldo ${warehouseBalances.get(id) ?? 0}`}
+        </option>)}
+      </select>
+      {emptyWarehouse && <small id={warehouseFieldId + "-help"}>Este almoxarifado já está cadastrado. Registre uma entrada para disponibilizar itens.</small>}
+    </div>}
+    {!request && <div className="field">
+      <label htmlFor={itemFieldId}>Item</label>
+      <select id={itemFieldId} name="equipment" value={itemId} onChange={(event) => setItem(event.target.value)}
+        aria-describedby={quantityAvailable === undefined ? undefined : itemFieldId + "-help"} required disabled={!paper && !warehouse}>
+        <option value="" disabled>{!paper && !warehouse ? "Selecione primeiro o almoxarifado" : itemOptions.length ? "Selecione o EPI ou uniforme" : "Nenhum item disponível"}</option>
+        {itemOptions.map(({ id, name }) => <option value={id} key={id}>{name}</option>)}
+      </select>
+      {quantityAvailable !== undefined && <small id={itemFieldId + "-help"}>Saldo disponível neste almoxarifado: {quantityAvailable} un.</small>}
+    </div>}
+    <div className="form-grid">
+      {!request && <label className="field">Quantidade<input name="quantity" type="number" min={1}
+        max={Math.min(quantityAvailable ?? 1_000_000, 1_000_000)} defaultValue={1} required /></label>}
+      <label className="field">{paper ? "Data da ficha" : "Data da entrega"}<input name="deliveredAt" type="date"
+        defaultValue={paper ? undefined : today} min={request?.minDate} max={today} required /></label>
+    </div>
+    <details className="record-details delivery-proof">
+      <summary>{paper ? "Anexar ficha (opcional)" : "Anexo de entrega (opcional)"}</summary>
+      <div className="field">
+        <label htmlFor={proofId}>Comprovante</label>
+        <input id={proofId} name="proof" type="file" accept="application/pdf,image/png,image/jpeg" aria-describedby={proofId + "-help"} />
+        <small id={proofId + "-help"}>PDF, PNG ou JPEG de até 3 MB.</small>
       </div>
-      <details className="record-details delivery-proof">
-        <summary>Anexo de entrega (opcional)</summary>
-        <div className="field">
-          <label htmlFor={proofId}>Comprovante</label>
-          <input id={proofId} name="proof" type="file" accept="application/pdf,image/png,image/jpeg" aria-describedby={proofId + "-help"} />
-          <small id={proofId + "-help"}>PDF, PNG ou JPEG de até 3 MB.</small>
-        </div>
-      </details>
-    </>
-  );
+    </details>
+  </>;
 }

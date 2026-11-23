@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
 import {
   addStock, confirmReceipt, decideRequest, identifyItem, openRequest, registerDelivery, requestReplacement, retireDelivery,
-  removeExpectedItem, resetStockMinimum, saveEquipment, saveExpectedItem, saveLot, saveRule, saveStockMinimum, saveWarehouse, setLotBlocked,
+  removeExpectedItem, resetStockMinimum, saveEquipment, saveExpectedItem, saveRule, saveStockMinimum, saveWarehouse,
 } from "@/app/equipment-actions";
 import { ActionForm } from "@/components/action-form";
 import { DeliveryFields } from "@/components/delivery-fields";
@@ -49,11 +49,11 @@ function Editor({ title, children }: { title: string; children: ReactNode }) {
   </section>;
 }
 
-function Choose({ label, name, values, empty = "Selecione", optional = false }: {
-  label: string; name: string; values: { id: string; name: string }[]; empty?: string; optional?: boolean;
+function Choose({ label, name, values, empty = "Selecione", optional = false, selected = "" }: {
+  label: string; name: string; values: { id: string; name: string }[]; empty?: string; optional?: boolean; selected?: string;
 }) {
   return <label className="field">{label}
-    <select name={name} required={!optional} defaultValue="">
+    <select name={name} required={!optional} defaultValue={selected}>
       <option value="">{empty}</option>
       {values.map((value) => <option key={value.id} value={value.id}>{value.name}</option>)}
     </select>
@@ -98,60 +98,68 @@ export async function Catalog({ scope, edit }: { scope: AccessScope; edit: strin
   </>;
 }
 
-export async function Inventory({ scope, operation }: { scope: AccessScope; operation: string }) {
+export async function Inventory({ scope, operation, warehouseId = "" }: { scope: AccessScope; operation: string; warehouseId?: string }) {
   const { companyId } = scope;
   const admin = canAdminister(scope);
-  const operator = handlesStock(scope);
-  if (!operator) notFound();
+  if (!handlesStock(scope)) notFound();
   if (operation === "minimos") return <StockMinimums scope={scope} />;
-  if (operation && !["entrada", "lote", "almoxarifado"].includes(operation)) notFound();
+  if (operation && !["entrada", "almoxarifado"].includes(operation)) notFound();
   const root = `/${companyId}/estoque`;
-  const [stocks, warehouses, lots, items, units] = await Promise.all([
-    db.stock.findMany({
-      where: { companyId, warehouse: { unit: unitsWhere(scope) } },
+  const [stocks, warehouses, items, units] = await Promise.all([
+    !operation ? db.stock.findMany({
+      where: { companyId, warehouse: { active: true, unit: { ...unitsWhere(scope), active: true } } },
       include: { warehouse: { include: { unit: true } }, lot: { include: { equipment: true } } },
-      orderBy: [{ warehouse: { name: "asc" } }, { lot: { code: "asc" } }],
-    }),
-    db.warehouse.findMany({ where: { companyId, active: true, unit: { ...unitsWhere(scope), active: true } }, include: { unit: true }, orderBy: { name: "asc" } }),
-    operator ? db.equipmentLot.findMany({
-      where: { companyId, ...(operation === "entrada" && { equipment: { active: true } }) },
-      include: { equipment: true }, orderBy: { code: "asc" },
+      orderBy: [{ warehouse: { name: "asc" } }, { lot: { equipment: { name: "asc" } } }],
     }) : [],
-    operation === "lote" ? db.equipment.findMany({ where: { companyId, active: true }, orderBy: { name: "asc" } }) : [],
-    operation === "almoxarifado" ? db.unit.findMany({ where: { ...unitsWhere(scope), active: true } }) : [],
+    operation !== "almoxarifado" ? db.warehouse.findMany({
+      where: { companyId, active: true, unit: { ...unitsWhere(scope), active: true } }, include: { unit: true }, orderBy: { name: "asc" },
+    }) : [],
+    operation === "entrada" ? db.equipment.findMany({ where: { companyId, active: true }, orderBy: { name: "asc" } }) : [],
+    operation === "almoxarifado" ? db.unit.findMany({ where: { ...unitsWhere(scope), active: true }, orderBy: { name: "asc" } }) : [],
   ]);
   const today = todayInBrazil();
+  const totals = new Map<string, { warehouse: typeof warehouses[number]; item: string; available: number; unavailable: number }>();
+  for (const { warehouse, lot, quantity } of stocks) {
+    const key = JSON.stringify([warehouse.id, lot.equipmentId]);
+    const row = totals.get(key) ?? { warehouse, item: lot.equipment.name, available: 0, unavailable: 0 };
+    if (lot.equipment.active && !lot.blocked && (!lot.expiresAt || lot.expiresAt >= today)) row.available += quantity;
+    else row.unavailable += quantity;
+    totals.set(key, row);
+  }
+  const warehousesWithItems = new Set(stocks.map(({ warehouseId }) => warehouseId));
   return <>
-    <Heading title={inventoryTitle} note="Consulte saldos, lotes e validades. Registre a entrada de EPIs e uniformes."
-      action={operation ? <Link className="button" href={root}>Voltar ao estoque</Link> : operator && <div className="operation-actions">
+    <Heading title={operation === "entrada" ? "Registrar entrada" : operation === "almoxarifado" ? "Novo almoxarifado" : inventoryTitle}
+      action={operation ? <Link className="button" href={root}>Voltar ao estoque</Link> : <div className="operation-actions">
         {admin && <Link className="button" href={`/${companyId}/usuarios?perfil=WAREHOUSE`}>Gerenciar responsáveis</Link>}
         {canSetStockMinimum(scope) && <Link className="button" href={`${root}?acao=minimos`}>Estoque mínimo</Link>}
         <Link className="button" href={`${root}?acao=almoxarifado`}>Novo almoxarifado</Link>
-        <Link className="button" href={`${root}?acao=lote`}>Novo lote</Link>
         <Link className="button primary" href={`${root}?acao=entrada`}>Registrar entrada</Link>
       </div>} />
-    {operation === "almoxarifado" ? <Editor title="Novo almoxarifado"><ActionForm action={saveWarehouse.bind(null, companyId)} reset>
+    {operation === "almoxarifado" ? <Editor title="Dados do almoxarifado"><ActionForm action={saveWarehouse.bind(null, companyId)} label="Cadastrar almoxarifado">
       {textField("Nome do almoxarifado", "name")}
       <Choose label="Unidade" name="unit" values={units} />
-    </ActionForm></Editor> : operation === "lote" ? <Editor title="Novo lote"><ActionForm action={saveLot.bind(null, companyId)} reset>
-      <Choose label="Item" name="equipment" values={items} />
-      {textField("Código do lote", "code", undefined, 60)}
-      <label className="field">Validade do produto, quando aplicável<input type="date" name="expiresAt" /></label>
-    </ActionForm></Editor> : operation === "entrada" ? <Editor title="Registrar entrada"><ActionForm action={addStock.bind(null, companyId)} reset>
-      <Choose label="Almoxarifado" name="warehouse" values={warehouses.map((row) => ({ id: row.id, name: `${row.name} · ${row.unit.name}` }))} />
-      <Choose label="Lote" name="lot" values={lots.map((row) => ({ id: row.id, name: `${row.equipment.name} · ${row.code}` }))} />
-      {quantityField}
-    </ActionForm></Editor> : <>
-      <Records cardsOnMobile columns={["Item", "Lote", "Almoxarifado", "Unidade", "Validade do lote", "Saldo", "Situação"]}
-        rows={stocks.map(({ warehouse, lot, quantity }) => [`${warehouse.id}/${lot.id}`, lot.equipment.name, lot.code, warehouse.name, warehouse.unit.name,
-          lot.expiresAt ? formatDay(lot.expiresAt) : "—", quantity,
-          !lot.equipment.active ? "Item inativo" : lot.blocked ? "Bloqueado" : lot.expiresAt && lot.expiresAt < today ? "Vencido" : "Liberado"])} />
-      {admin && <>
-        <h2 className="section-title">Controle de lotes</h2>
-        <Records columns={["Item", "Lote", "Ação"]}
-          rows={lots.map((row) => [row.id, row.equipment.name, row.code,
-            <ActionForm action={setLotBlocked.bind(null, companyId, row.id, !row.blocked)} label={row.blocked ? "Desbloquear" : "Bloquear"} />])} />
-      </>}
+    </ActionForm></Editor> : operation === "entrada" ? <Editor title="Item recebido">
+      {warehouses.length && items.length ? <ActionForm action={addStock.bind(null, companyId)} label="Registrar entrada" reset>
+        <div className="form-grid">
+          <Choose label="Almoxarifado" name="warehouse"
+            selected={warehouses.some(({ id }) => id === warehouseId) ? warehouseId : warehouses.length === 1 ? warehouses[0].id : ""}
+            values={warehouses.map((row) => ({ id: row.id, name: `${row.name} · ${row.unit.name}` }))} />
+          <Choose label="Item" name="equipment" values={items} />
+          {quantityField}
+          <label className="field">Validade do produto (opcional)<input type="date" name="expiresAt" /></label>
+        </div>
+      </ActionForm> : <p className="empty">Para registrar uma entrada, cadastre um {warehouses.length ?
+        <Link href={`/${companyId}/epis?edit=novo`} className="text-action">item</Link> :
+        <Link href={`${root}?acao=almoxarifado`} className="text-action">almoxarifado</Link>}.</p>}
+    </Editor> : <>
+      <h2 className="section-title">Almoxarifados</h2>
+      <Records cardsOnMobile columns={["Almoxarifado", "Unidade", "Situação", "Ação"]}
+        rows={warehouses.map((row) => [row.id, row.name, row.unit.name, warehousesWithItems.has(row.id) ? "Com itens cadastrados" : "Aguardando primeira entrada",
+          <Link className="text-action" href={`${root}?acao=entrada&almoxarifado=${encodeURIComponent(row.id)}`}>Registrar entrada</Link>])} />
+      <h2 className="section-title">Saldo por item</h2>
+      <Records cardsOnMobile columns={["Item", "Almoxarifado", "Unidade", "Disponível", "Indisponível"]}
+        rows={[...totals].map(([key, { warehouse, item, available, unavailable }]) =>
+          [key, item, warehouse.name, warehouse.unit.name, available, unavailable])} />
     </>}
   </>;
 }
@@ -389,48 +397,68 @@ export async function Requests({ scope, edit, status, sent, queue = "", personal
   </>;
 }
 
-export async function Deliveries({ scope, create, requestId, registered, personal = false, retired = false }: {
-  scope: AccessScope; create: boolean; requestId: string; registered: boolean; personal?: boolean; retired?: boolean;
+export async function Deliveries({ scope, create, requestId, registered, paper = false, employeeId = "", personal = false, retired = false }: {
+  scope: AccessScope; create: boolean; requestId: string; registered: string; paper?: boolean; employeeId?: string; personal?: boolean; retired?: boolean;
 }) {
   const { companyId } = scope;
   const root = `/${companyId}/entregas`;
   const own = personal || scope.role === "EMPLOYEE";
   if (own && !hasPersonalEquipment(scope)) notFound();
   const operator = !own && handlesStock(scope);
-  if (create || requestId) {
+  if (create || requestId || paper) {
     if (!operator) notFound();
+    if (paper && requestId) notFound();
     const request = requestId ? await db.equipmentRequest.findFirst({
       where: { ...requestWhere(scope), id: requestId, status: "WAITING_DELIVERY" },
       include: { employee: true, equipment: true },
     }) : null;
     if (requestId && (!request || !request.equipment)) notFound();
     const today = todayInBrazil();
-    const [people, stocks] = await Promise.all([
+    const [people, warehouses, stocks, items] = await Promise.all([
       request ? [] : db.employee.findMany({
         where: { ...employeesWhere(scope), active: true, unit: { active: true } },
         select: { id: true, name: true, unitId: true, unit: { select: { name: true } } }, orderBy: { name: "asc" },
       }),
-      db.stock.findMany({
-        where: { companyId, quantity: { gte: request?.quantity ?? 1 },
+      paper ? [] : db.warehouse.findMany({
+        where: { companyId, active: true, unit: { ...unitsWhere(scope), active: true, ...(request && { id: request.unitId }) } },
+        orderBy: { name: "asc" }, select: { id: true, name: true, unitId: true },
+      }),
+      paper ? [] : db.stock.findMany({
+        where: { companyId, quantity: { gt: 0 },
           warehouse: { active: true, unit: { ...unitsWhere(scope), active: true, ...(request && { id: request.unitId }) } },
           lot: { ...availableLotWhere(today), ...(request?.equipmentId && { equipmentId: request.equipmentId }) } },
-        include: { warehouse: true, lot: { include: { equipment: true } } },
-        orderBy: [{ warehouse: { name: "asc" } }, { lot: { code: "asc" } }],
+        select: { warehouseId: true, quantity: true, lot: { select: { equipment: { select: { id: true, name: true } } } } },
+        orderBy: { lot: { equipment: { name: "asc" } } },
       }),
+      paper ? db.equipment.findMany({ where: { companyId, active: true }, select: { id: true, name: true }, orderBy: { name: "asc" } }) : [],
     ]);
+    if (paper && employeeId && !people.some(({ id }) => id === employeeId)) notFound();
+    const totals = new Map<string, { warehouseId: string; item: typeof items[number]; quantity: number }>();
+    for (const { warehouseId, lot: { equipment }, quantity } of stocks) {
+      const key = JSON.stringify([warehouseId, equipment.id]);
+      const row = totals.get(key) ?? { warehouseId, item: equipment, quantity: 0 };
+      row.quantity += quantity;
+      totals.set(key, row);
+    }
+    const canSubmit = request ? [...totals.values()].some(({ quantity }) => quantity >= request.quantity) :
+      people.length && (paper ? items.length : warehouses.length);
     return <>
-      <Heading title={request ? "Atender pedido" : "Nova entrega"} action={<Link className="button" href={request ? `/${companyId}/solicitacoes?fila=prontos` : root}>Voltar</Link>} />
-      {stocks.length && (request || people.length) ? <Editor title="Dados da entrega">
-        <ActionForm action={registerDelivery.bind(null, companyId, randomUUID(), requestId || null)} label="Confirmar entrega">
-          <DeliveryFields people={people} today={inputDay(today)} request={request ? {
+      <Heading title={paper ? "Registrar ficha de papel" : request ? "Atender pedido" : "Nova entrega"}
+        note={paper ? "Registre o que o colaborador já recebeu. O saldo do almoxarifado ficará igual." : undefined}
+        action={<Link className="button" href={request ? `/${companyId}/solicitacoes?fila=prontos` : root}>Voltar</Link>} />
+      {canSubmit ? <Editor title={paper ? "Item já entregue" : "Dados da entrega"}>
+        <ActionForm action={registerDelivery.bind(null, companyId, randomUUID(), requestId || null, paper)} label={paper ? "Registrar item" : "Confirmar entrega"}>
+          <DeliveryFields key={employeeId} people={people} warehouses={warehouses} stocks={[...totals.values()]} items={items}
+            paper={paper} employeeId={employeeId} today={inputDay(today)} request={request ? {
             name: request.employee.name, equipment: request.equipment!.name, unitId: request.unitId,
             quantity: request.quantity, minDate: inputDay(brazilDay(request.openedAt)),
-          } : undefined} stocks={stocks.map(({ warehouse, lot, quantity }) => ({
-            key: `${warehouse.id}|${lot.id}`, unitId: warehouse.unitId,
-            label: `${warehouse.name} · ${lot.equipment.name} · Lote ${lot.code} · Saldo ${quantity}`,
-          }))} />
+          } : undefined} />
         </ActionForm>
-      </Editor> : <p className="empty">Nenhum lote com saldo suficiente e colaborador elegível estão disponíveis para esta entrega.</p>}
+      </Editor> : <section className="panel"><p className="empty">{request ?
+        <>Nenhum almoxarifado da unidade tem saldo suficiente. <Link className="text-action" href={`/${companyId}/estoque?acao=entrada`}>Registrar entrada</Link></> : !people.length ?
+        "Nenhum colaborador ativo está disponível no seu escopo." : paper ?
+        <>Cadastre um EPI ou uniforme para lançar a ficha. <Link className="text-action" href={`/${companyId}/epis?edit=novo`}>Cadastrar item</Link></> :
+        <>A unidade precisa de um almoxarifado para registrar entregas. <Link className="text-action" href={`/${companyId}/estoque?acao=almoxarifado`}>Cadastrar almoxarifado</Link></>}</p></section>}
     </>;
   }
 
@@ -438,7 +466,7 @@ export async function Deliveries({ scope, create, requestId, registered, persona
     where: own ? { companyId, employeeId: ownEmployeeId(scope) } : operationalDeliveryWhere(scope),
     include: {
       employee: { select: { name: true } }, equipment: { select: { name: true } },
-      stock: { include: { warehouse: { include: { unit: true } }, lot: { select: { code: true, expiresAt: true } } } },
+      stock: { select: { warehouse: { select: { name: true } }, lot: { select: { expiresAt: true } } } },
       actor: { select: { scopes: { where: { companyId }, select: { name: true } } } },
       proof: { select: { deliveryId: true } },
       receipt: { select: { confirmedAt: true } },
@@ -451,9 +479,9 @@ export async function Deliveries({ scope, create, requestId, registered, persona
   const personalRows = own ? rows : [];
   const latest = latestByItem(personalRows);
   const latestIds = new Set(latest.map((row) => row.id));
-  const confirmed = latestByItem(personalRows.filter((row) => row.receipt));
+  const confirmed = latestByItem(personalRows.filter((row) => row.receipt || !row.warehouseId));
   const current = confirmed.filter((row) => !row.retirement);
-  const pending = personalRows.filter((row) => !row.receipt && !row.retirement);
+  const pending = personalRows.filter((row) => row.warehouseId && !row.receipt && !row.retirement);
   const pendingIds = new Set(pending.map((row) => row.id));
   const outOfUse = [...latest, ...confirmed.filter((row) => !latestIds.has(row.id))].filter((row) => row.retirement);
   const today = todayInBrazil();
@@ -470,22 +498,23 @@ export async function Deliveries({ scope, create, requestId, registered, persona
     </details>;
   const receiptCell = (row: (typeof rows)[number], canConfirm: boolean) => row.receipt ?
     <span className="badge active">Confirmado em {receiptDate.format(row.receipt.confirmedAt)}</span> :
+    !row.warehouseId ? <span className="badge">Ficha de papel</span> :
     canConfirm ? <ActionForm action={confirmReceipt.bind(null, companyId, row.id)} label="Confirmo que recebi" /> : "Aguardando confirmação";
   const itemCard = (row: (typeof rows)[number], allowActions: boolean) =>
-    <article className={`panel personal-equipment-card${row.receipt ? "" : " awaiting-receipt"}`} key={row.id} id={`entrega-${row.id}`}>
+    <article className={`panel personal-equipment-card${pendingIds.has(row.id) ? " awaiting-receipt" : ""}`} key={row.id} id={`entrega-${row.id}`}>
       <h3>{row.equipment.name}</h3>
       <dl>
         <div><dt>Quantidade</dt><dd>{row.quantity}</dd></div>
-        <div><dt>Data da entrega</dt><dd>{formatDay(row.deliveredAt)}</dd></div>
-        {row.stock.lot.expiresAt && <div><dt>Validade do lote</dt><dd>
+        <div><dt>{row.warehouseId ? "Data da entrega" : "Data da ficha"}</dt><dd>{formatDay(row.deliveredAt)}</dd></div>
+        {row.stock?.lot.expiresAt && <div><dt>Validade do produto</dt><dd>
           {formatDay(row.stock.lot.expiresAt)} {row.stock.lot.expiresAt < today && <span className="badge deadline-danger">Vencido</span>}
         </dd></div>}
       </dl>
       {receiptCell(row, true)}
       {allowActions && <div className="personal-item-actions">
-        {row.receipt && replacement(row)}
+        {!pendingIds.has(row.id) && replacement(row)}
         <details className="record-details personal-item-action">
-          <summary>{row.receipt ? "Mais opções" : "Problemas com este item"}</summary>
+          <summary>{pendingIds.has(row.id) ? "Problemas com este item" : "Mais opções"}</summary>
           <div className="item-action-options">
             <details className="record-details personal-item-action">
               <summary>Retirar de uso</summary>
@@ -494,15 +523,21 @@ export async function Deliveries({ scope, create, requestId, registered, persona
                 <label className="field">Justificativa da retirada<textarea name="note" rows={2} maxLength={500} required /></label>
               </ActionForm>
             </details>
-            {!row.receipt && replacement(row)}
+            {pendingIds.has(row.id) && replacement(row)}
           </div>
         </details>
       </div>}
     </article>;
   return <>
     <Heading title={own ? "Meus itens" : "Histórico"} note={own ? "Entregas de EPIs e uniformes" : "Entregas registradas e confirmação de recebimento"}
-      action={operator && <Link className="button primary" href={`${root}?edit=novo`}>Nova entrega</Link>} />
-    {operator && registered && <p className="feedback success operation-feedback" role="status">Entrega registrada e saldo atualizado.</p>}
+      action={operator && <div className="operation-actions">
+        <Link className="button" href={`${root}?edit=ficha`}>Registrar ficha de papel</Link>
+        <Link className="button primary" href={`${root}?edit=novo`}>Nova entrega</Link>
+      </div>} />
+    {operator && registered && <p className="feedback success operation-feedback" role="status">{registered === "ficha" ?
+      <>Item da ficha registrado. O saldo do almoxarifado ficou igual. <Link className="text-action"
+        href={`${root}?edit=ficha${employeeId ? `&colaborador=${encodeURIComponent(employeeId)}` : ""}`}>Registrar outro item</Link></> :
+      "Entrega registrada e saldo atualizado."}</p>}
     {own && <>
       {retired && <p className="feedback success operation-feedback" role="status">Item retirado de uso. A entrega ficou registrada no histórico.</p>}
       {pending.length > 0 && <section aria-labelledby="itens-a-confirmar">
@@ -526,8 +561,8 @@ export async function Deliveries({ scope, create, requestId, registered, persona
       </>}
       <h2 className="section-title">Histórico de entregas</h2>
     </>}
-    <Records cardsOnMobile={own} columns={["Item", ...(own ? [] : ["Colaborador"]), "Almoxarifado", "Lote", "Quantidade", "Entrega", "Responsável", "Recebimento", "Situação do item", "Anexo"]}
-      rows={rows.map((row) => [row.id, row.equipment.name, ...(own ? [] : [row.employee.name]), row.stock.warehouse.name, row.stock.lot.code, row.quantity,
+    <Records cardsOnMobile columns={["Item", ...(own ? [] : ["Colaborador"]), "Almoxarifado", "Quantidade", "Data", "Responsável", "Recebimento", "Situação do item", "Anexo"]}
+      rows={rows.map((row) => [row.id, row.equipment.name, ...(own ? [] : [row.employee.name]), row.stock?.warehouse.name ?? "—", row.quantity,
         <time className="delivery-day" dateTime={inputDay(row.deliveredAt)}>{formatDay(row.deliveredAt)}</time>,
         row.actor.scopes[0]?.name ?? "—",
         receiptCell(row, own && !pendingIds.has(row.id)),

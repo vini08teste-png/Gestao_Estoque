@@ -5,7 +5,7 @@ import { notFound } from "next/navigation";
 import { Prisma } from "@/generated/prisma/client";
 import { canAdminister, requireScope, type AccessScope } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { canAddEmployees, unitsWhere } from "@/lib/directory";
+import { canAddEmployees, canGrantSupervisorAccess, employeesWhere, unitsWhere } from "@/lib/directory";
 import { emailAddress, text, validEmail, type FormResult } from "@/lib/forms";
 import { roles } from "@/lib/organization";
 import { hashPassword, passwordLengthText, validPassword, verifyPassword } from "@/lib/password";
@@ -109,6 +109,46 @@ export async function saveEmployee(companyId: string, id: string | null, _: Form
   }, id ? canAdminister : canAddEmployees);
 }
 
+async function createUser(tx: Prisma.TransactionClient, email: string, password: FormDataEntryValue | null) {
+  if (typeof password !== "string" || !validPassword(password)) {
+    throw new FormError(`Um novo usuário precisa de uma senha inicial com ${passwordLengthText} caracteres.`);
+  }
+  return tx.user.create({
+    data: { email, passwordHash: await hashPassword(password), mustChangePassword: true }, select: { id: true },
+  });
+}
+
+export async function grantSupervisorAccess(companyId: string, employeeId: string, _: FormResult, data: FormData) {
+  return save(companyId, async (tx, _actor, scope) => {
+    const employee = await tx.employee.findFirst({
+      where: { ...employeesWhere(scope), id: employeeId, active: true },
+      select: { name: true, scope: { select: { userId: true, active: true, role: true } } },
+    });
+    if (!employee) throw new FormError("Colaborador ativo indisponível nas suas unidades.");
+    if (employee.scope) {
+      const { active, role, userId } = employee.scope;
+      if (active && role === "SUPERVISOR") return;
+      if (!active || role !== "EMPLOYEE") {
+        throw new FormError("Peça a um administrador para revisar o perfil atual desta pessoa.");
+      }
+      await tx.userScope.update({
+        where: { companyId_userId: { companyId, userId } },
+        data: { role: "SUPERVISOR", allUnits: false, units: { deleteMany: {} } },
+      });
+      return;
+    }
+    const email = emailAddress(data);
+    if (!validEmail(email)) throw new FormError("Informe um e-mail válido.");
+    if (await tx.user.findUnique({ where: { email }, select: { id: true } })) {
+      throw new FormError("Este e-mail já tem uma conta. Peça a um administrador para revisar o vínculo.");
+    }
+    const user = await createUser(tx, email, data.get("password"));
+    await tx.userScope.create({
+      data: { companyId, userId: user.id, employeeId, name: employee.name, role: "SUPERVISOR", allUnits: false },
+    });
+  }, canGrantSupervisorAccess);
+}
+
 export async function saveUser(companyId: string, id: string | null, _: FormResult, data: FormData) {
   return save(companyId, async (tx, actor) => {
     const name = required(data, "name", "o nome");
@@ -143,12 +183,7 @@ export async function saveUser(companyId: string, id: string | null, _: FormResu
     const existing = await tx.user.findUnique({ where: { email }, select: { id: true } });
     const password = data.get("password");
     if (existing && password) throw new FormError("Para vincular uma conta existente, deixe a senha inicial em branco.");
-    if (!existing && (typeof password !== "string" || !validPassword(password))) {
-      throw new FormError(`Um novo usuário precisa de uma senha inicial com ${passwordLengthText} caracteres.`);
-    }
-    const user = existing ?? await tx.user.create({
-      data: { email, passwordHash: await hashPassword(password as string), mustChangePassword: true }, select: { id: true },
-    });
+    const user = existing ?? await createUser(tx, email, password);
     await tx.userScope.create({
       data: { companyId, userId: user.id, ...values, units: { createMany: { data: unitIds.map((unitId) => ({ unitId })) } } },
     });

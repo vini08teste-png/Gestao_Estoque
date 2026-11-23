@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
-import { resetUserPassword, saveCompany, saveEmployee, saveUnit, saveUser } from "@/app/organization-actions";
+import { grantSupervisorAccess, resetUserPassword, saveCompany, saveEmployee, saveUnit, saveUser } from "@/app/organization-actions";
 import { AccessScopeFields } from "@/components/access-scope-fields";
 import { ActionForm } from "@/components/action-form";
 import { Catalog, Deliveries, ExpectedItems, Inventory, Requests, Rules } from "@/components/equipment-pages";
@@ -10,7 +10,7 @@ import { TeamOverview } from "@/components/team-overview";
 import { sections, Workspace, type Section } from "@/components/workspace";
 import { canAdminister, requireScope, type AccessScope } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { canAddEmployees, employeesWhere, unitsWhere } from "@/lib/directory";
+import { canAddEmployees, canGrantSupervisorAccess, employeesWhere, unitsWhere } from "@/lib/directory";
 import { companyBrands, isCompany, roles } from "@/lib/organization";
 import { passwordLength } from "@/lib/password";
 import type { Role } from "@/generated/prisma/enums";
@@ -92,8 +92,8 @@ async function Units({ scope, edit }: { scope: AccessScope; edit: string }) {
   );
 }
 
-async function Employees({ scope, edit, query, status, awaitingReceipt }: {
-  scope: AccessScope; edit: string; query: string; status: string; awaitingReceipt: boolean;
+async function Employees({ scope, edit, supervisorAccess, query, status, awaitingReceipt }: {
+  scope: AccessScope; edit: string; supervisorAccess: string; query: string; status: string; awaitingReceipt: boolean;
 }) {
   const admin = canAdminister(scope);
   const canCreate = canAddEmployees(scope);
@@ -101,6 +101,35 @@ async function Employees({ scope, edit, query, status, awaitingReceipt }: {
   const base = `/${companyId}/colaboradores`;
   const team = scope.role === "MANAGER" || scope.role === "SUPERVISOR";
   const title = scope.role === "EMPLOYEE" ? "Meu cadastro" : scope.role === "SUPERVISOR" ? "Minha equipe" : team ? "Equipe" : "Colaboradores";
+  if (supervisorAccess) {
+    if (!canGrantSupervisorAccess(scope)) notFound();
+    const person = await db.employee.findFirst({
+      where: { ...employeesWhere(scope), id: supervisorAccess, active: true },
+      select: { id: true, name: true, unit: { select: { name: true } }, scope: { select: { active: true, role: true } } },
+    });
+    if (!person) notFound();
+    return <>
+      <Heading title="Acesso de encarregado" description={`${person.name} · ${person.unit.name}`} />
+      <Editor title="Perfil de acesso" base={base}>
+        {person.scope?.active && person.scope.role === "SUPERVISOR" ? (
+          <p className="empty" role="status">Acesso de encarregado ativo.</p>
+        ) : person.scope && (!person.scope.active || person.scope.role !== "EMPLOYEE") ? (
+          <p className="empty">Peça a um administrador para revisar o perfil atual desta pessoa.</p>
+        ) : (
+          <ActionForm key={person.id} action={grantSupervisorAccess.bind(null, companyId, person.id)} label="Dar acesso de encarregado">
+            {person.scope ? <p>A pessoa continuará usando o mesmo e-mail e a mesma senha.</p> :
+              <div className="form-grid">
+                <label className="field">E-mail de acesso<input name="email" type="email" maxLength={254} autoComplete="off" required /></label>
+                <label className="field">Senha temporária<input name="password" type="password" autoComplete="new-password"
+                  minLength={passwordLength.min} maxLength={passwordLength.max} required />
+                  <small>A pessoa deverá criar uma nova senha no primeiro acesso.</small>
+                </label>
+              </div>}
+          </ActionForm>
+        )}
+      </Editor>
+    </>;
+  }
   if (edit) {
     if (!(edit === "novo" ? canCreate : admin)) notFound();
     const [current, units, people] = await Promise.all([
@@ -153,7 +182,7 @@ async function Employees({ scope, edit, query, status, awaitingReceipt }: {
         { contractorCompany: { contains: query, mode: "insensitive" } },
       ] } : {}),
     },
-    include: { unit: { select: { name: true } }, supervisor: { select: { name: true } }, scope: { select: { userId: true } } },
+    include: { unit: { select: { name: true } }, supervisor: { select: { name: true } }, scope: { select: { userId: true, role: true, active: true } } },
     orderBy: { name: "asc" },
   });
   return (
@@ -181,6 +210,8 @@ async function Employees({ scope, edit, query, status, awaitingReceipt }: {
             <Link className="text-action" aria-label={`Configurar acesso de ${person.name}`}
               href={`/${companyId}/usuarios?${person.scope ? `edit=${encodeURIComponent(person.scope.userId)}` :
                 `edit=novo&colaborador=${encodeURIComponent(person.id)}`}`}>Configurar acesso</Link>
+            {person.active && <Link className="text-action" aria-label={`Registrar ficha de papel de ${person.name}`}
+              href={`/${companyId}/entregas?edit=ficha&colaborador=${encodeURIComponent(person.id)}`}>Registrar ficha de papel</Link>}
           </div>] : [])])} />}
     </>
   );
@@ -310,18 +341,22 @@ export default async function CompanyPage({ params, searchParams }: {
   const content = {
     dashboard: <Dashboard scope={scope} />,
     unidades: <Units scope={scope} edit={edit} />,
-    colaboradores: <Employees scope={scope} edit={edit} query={query} status={status} awaitingReceipt={search.pendencia === "confirmacao"} />,
+    colaboradores: <Employees scope={scope} edit={edit} query={query} status={status}
+      supervisorAccess={typeof search.encarregado === "string" ? search.encarregado : ""} awaitingReceipt={search.pendencia === "confirmacao"} />,
     usuarios: <Users scope={scope} edit={edit} viewerId={viewer.id}
       profile={typeof search.perfil === "string" && Object.hasOwn(roles, search.perfil) ? search.perfil as Role : undefined}
       employeeId={typeof search.colaborador === "string" ? search.colaborador : ""} />,
     empresa: <Company scope={scope} />,
     epis: <Catalog scope={scope} edit={edit} />,
-    estoque: <Inventory scope={scope} operation={typeof search.acao === "string" ? search.acao : ""} />,
-    entregas: <Deliveries scope={scope} create={edit === "novo"} requestId={typeof search.solicitacao === "string" ? search.solicitacao : ""}
-      registered={search.registrada === "1"} />,
+    estoque: <Inventory scope={scope} operation={typeof search.acao === "string" ? search.acao : ""}
+      warehouseId={typeof search.almoxarifado === "string" ? search.almoxarifado : ""} />,
+    entregas: <Deliveries scope={scope} create={edit === "novo"} paper={edit === "ficha"}
+      employeeId={(edit === "ficha" || search.registrada === "ficha") && typeof search.colaborador === "string" ? search.colaborador : ""}
+      requestId={typeof search.solicitacao === "string" ? search.solicitacao : ""}
+      registered={search.registrada === "ficha" || search.registrada === "1" ? search.registrada : ""} />,
     solicitacoes: <Requests scope={scope} edit={edit} status={typeof search.status === "string" ? search.status : ""}
       queue={typeof search.fila === "string" ? search.fila : ""} sent={search.enviada === "1"} />,
-    "meus-epis": <Deliveries scope={scope} create={false} requestId="" registered={false} personal retired={search.retirado === "1"} />,
+    "meus-epis": <Deliveries scope={scope} create={false} requestId="" registered="" personal retired={search.retirado === "1"} />,
     "minhas-solicitacoes": <Requests scope={scope} edit={edit} status={typeof search.status === "string" ? search.status : ""}
       sent={search.enviada === "1"} personal />,
     alertas: <Alerts scope={scope} query={search} />,

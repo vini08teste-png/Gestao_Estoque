@@ -24,7 +24,7 @@ A [documentação do sistema](docs/README.md) detalha o comportamento implementa
 
 ## 4. Perfis
 - **Administrador:** usuários, empresas, unidades, almoxarifados, configurações e regras de aprovação.
-- **Gestor:** cadastro de colaboradores, operação de estoque e entregas, e acompanhamento das unidades autorizadas.
+- **Gestor:** cadastro de colaboradores, concessão do perfil Encarregado, operação de estoque e entregas, e acompanhamento das unidades autorizadas.
 - **Encarregado:** cadastro e consulta da equipe direta, atendimento de solicitações no seu escopo e operação de estoque da unidade. Pode decidir solicitações da equipe quando a aprovação estiver ativada.
 - **Almoxarifado:** estoque, entradas, entregas e atendimento de solicitações.
 - **Colaborador:** consulta de seus itens, confirmação do recebimento e abertura/acompanhamento de solicitações.
@@ -36,8 +36,8 @@ A [documentação do sistema](docs/README.md) detalha o comportamento implementa
 2. Dashboard por perfil.
 3. Colaboradores: matrícula, nome, empresa do grupo, empresa terceirizada quando houver, unidade, setor, função, encarregado e situação.
 4. Cadastro de itens: tipo EPI ou uniforme, nome, fabricante/modelo e observações. Para EPI, CA e sua validade.
-5. Estoque: validade do produto/lote, quantidade por almoxarifado, entradas e baixas.
-6. Histórico de entregas: colaborador, item, lote, quantidade, data, responsável, confirmação do destinatário e anexo opcional.
+5. Estoque: item, validade opcional do produto, quantidade por almoxarifado, entradas e baixas.
+6. Histórico: entregas com baixa e registros de fichas de papel com o saldo preservado. Ambos guardam colaborador, item, quantidade, data, responsável e anexo opcional. A confirmação digital do destinatário se aplica às entregas com baixa.
 7. Meus itens: EPIs e uniformes recebidos, histórico e confirmação de recebimento.
 8. Solicitações: item, quantidade, motivo, situação e aprovação quando exigida. Item fora do catálogo aguarda identificação.
 9. Alertas separados para estoque baixo ou zerado, validade de CA e validade de produto/lote.
@@ -45,7 +45,7 @@ A [documentação do sistema](docs/README.md) detalha o comportamento implementa
 
 ## 6. Regras de negócio
 - Cada colaborador pertence a uma empresa e unidade; matrícula única no escopo da empresa.
-- A empresa terceirizada identifica o empregador. O colaborador terceirizado pode ser encarregado na unidade em que atua, conforme o perfil de acesso atribuído pelo administrador.
+- A empresa terceirizada identifica o empregador. O administrador ou o gestor da unidade pode conceder a um colaborador terceirizado o perfil Encarregado na unidade em que atua.
 - Cada almoxarifado pertence a uma unidade.
 - A baixa de estoque e o registro da entrega ocorrem em uma transação atômica que impede estoque negativo. A confirmação de recebimento é feita depois pelo destinatário.
 - Nova entrega de substituição acrescenta um registro ao histórico.
@@ -56,7 +56,7 @@ A [documentação do sistema](docs/README.md) detalha o comportamento implementa
 - Alertas configuráveis: inicialmente 30, 15 e 7 dias; vencido/atrasado após a data.
 - Solicitações seguem para atendimento sem aprovação. Pedidos fora do catálogo passam pela identificação do item antes da entrega.
 - As regras de aprovação por unidade e item ficam disponíveis para uso futuro. Quando a aprovação for ativada, a regra específica prevalece sobre a geral e a aprovação é exigida na ausência de regra.
-- O estoque baixo usa o limite por item e unidade, com padrão de cinco unidades disponíveis. O saldo disponível considera somente lotes válidos e liberados de almoxarifados ativos. A fila informa quando falta saldo para atender a quantidade pedida.
+- O estoque baixo usa o limite por item e unidade, com padrão de cinco unidades disponíveis. O saldo disponível soma as entradas válidas e liberadas de cada almoxarifado ativo. O controle das entradas usa lotes internos. A fila informa quando falta saldo para atender a quantidade pedida.
 - Solicitação com aprovação: `pendente_aprovacao -> aguardando_entrega -> concluida`; rejeição com justificativa.
 - Solicitação sem aprovação: `aguardando_entrega -> concluida`.
 - Uma solicitação por item. O atendimento é integral, e pedidos em aberto podem ser cancelados.

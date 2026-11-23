@@ -41,13 +41,13 @@ Todo usuário com um colaborador ativo vinculado tem acesso a **Meus itens** e a
 
 Em **Colaboradores**, um administrador pode abrir **Configurar acesso** para informar o e-mail usado no login, vincular a pessoa e escolher seu perfil. Para **Almoxarifado** e **Gestor**, selecione as unidades autorizadas. Para **Encarregado**, indique a pessoa no campo **Encarregado responsável** do cadastro de cada integrante da equipe.
 
-Para terceiros, informe o empregador em **Empresa terceirizada**, por exemplo, LUK. O cadastro fica na empresa do grupo e na unidade onde a pessoa atua. O administrador também pode atribuir a ela o perfil **Encarregado** e vinculá-la à equipe da mesma unidade.
+Para terceiros, informe o empregador em **Empresa terceirizada**, por exemplo, LUK. O cadastro fica na empresa do grupo e na unidade onde a pessoa atua. O gestor pode conceder o perfil **Encarregado** em **Equipe → Dar acesso de encarregado** para colaboradores ativos de suas unidades, inclusive terceirizados.
 
 **Trocar senha** fica no menu da conta. Para recuperar uma senha esquecida, um administrador pode abrir **Acessos e perfis**, editar a conta e usar **Redefinir senha**. A redefinição encerra as sessões da conta e exige a troca da senha temporária no login. Para uma conta vinculada a mais de uma empresa, o administrador precisa administrar todas elas.
 
 ## Entregas e solicitações
 
-1. Cadastre o item como EPI ou uniforme, um almoxarifado vinculado à unidade, um lote e uma entrada de estoque.
+1. Cadastre o item como EPI ou uniforme e um almoxarifado vinculado à unidade. Em **Estoque → Registrar entrada**, escolha o item e informe a quantidade.
 2. Para uma solicitação, entre como Colaborador e informe o item, a quantidade e o motivo. O pedido segue para atendimento. Se estiver fora do catálogo, o almoxarifado identifica o item antes da entrega.
 3. Em **Solicitações**, os perfis operacionais veem o saldo da unidade e o que falta para atender. **Alertas** mostra saldo baixo ou zerado, com limite configurável por item e unidade e padrão de cinco unidades. As regras de aprovação ficam guardadas para uso futuro, com o fluxo de aprovação desativado por padrão.
 4. Administrador, Gestor, Encarregado e Almoxarifado podem registrar entregas no seu escopo. O sistema baixa o saldo, registra a entrega e conclui a solicitação em uma única transação. O anexo PDF, PNG ou JPEG de até 3 MB é opcional.
@@ -55,14 +55,14 @@ Para terceiros, informe o empregador em **Empresa terceirizada**, por exemplo, L
 
 Use **Não encontrei o item** para descrever o que precisa. Um operador vincula o pedido a um item ativo do catálogo, e o pedido segue para atendimento com a configuração atual.
 
-O fluxo registra a data da entrega e, quando o colaborador confirma, a data do recebimento. O CA é cadastrado nos EPIs. A validade física do lote é preenchida quando aplicável. O PDF ou imagem do comprovante fica no PostgreSQL e pode ser baixado por usuários com acesso à entrega.
+O fluxo registra a data da entrega e, quando o colaborador confirma, a data do recebimento. O CA é cadastrado nos EPIs. A validade física do produto pode ser informada na entrada. Para registrar itens que o colaborador já recebeu, use **Histórico → Registrar ficha de papel**. O PDF ou imagem do comprovante fica no PostgreSQL e pode ser baixado por usuários com acesso à entrega.
 
 Em **Meus itens**, o destinatário pode retirar o item de uso com motivo e justificativa ou solicitar uma troca. A retirada fica no histórico e a troca segue o fluxo das solicitações. O pedido de troca aceita texto, foto em JPG, PNG ou WebP de até 3 MB, ou ambos. O destinatário e quem tem acesso à solicitação podem ver a foto em **Ver detalhes**.
 
 ## Alertas e relatórios
 
 - O painel traz indicadores do perfil. O colaborador acompanha os próprios pedidos e recebimentos.
-- Em **Alertas**, acompanhe validade do CA e validade física de lotes com saldo. Administradores podem configurar os três prazos de alerta da empresa, inicialmente 7, 15 e 30 dias.
+- Em **Alertas**, acompanhe a validade do CA e a validade dos produtos com saldo. Administradores podem configurar os três prazos de alerta da empresa, inicialmente 7, 15 e 30 dias.
 - Em **Relatórios**, escolha Entregas, Pendências ou Vencimentos. Filtre por unidade e período. Administradores com acesso a mais de uma empresa podem usar também o seletor de empresa. Pendências incluem pedidos em aberto e recebimentos a confirmar. O CSV usa os mesmos filtros da tela.
 
 ## Testes da Etapa 6

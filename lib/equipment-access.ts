@@ -21,12 +21,15 @@ export function deliveryWhere(scope: AccessScope): Prisma.DeliveryWhereInput {
 }
 
 export function operationalDeliveryWhere(scope: AccessScope): Prisma.DeliveryWhereInput {
+  const unit = unitsWhere(scope);
   return {
     companyId: scope.companyId,
-    stock: { warehouse: { unit: unitsWhere(scope) } },
+    OR: [{ stock: { warehouse: { unit } } }, { warehouseId: null, employee: { unit } }],
     ...(scope.role === "SUPERVISOR" ? { employee: employeesWhere(scope) } : {}),
   };
 }
+
+export const deliveriesAwaitingReceipt = { warehouseId: { not: null }, receipt: null } satisfies Prisma.DeliveryWhereInput;
 
 export function requestWhere(scope: AccessScope): Prisma.EquipmentRequestWhereInput {
   const companyId = scope.companyId;

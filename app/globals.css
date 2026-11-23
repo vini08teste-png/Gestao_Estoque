@@ -239,7 +239,7 @@ button:disabled { cursor: wait; opacity: .68; }
 .team-counts { display: flex; flex-wrap: wrap; gap: 6px; }
 .team-counts span { padding: 4px 8px; background: #edf0f5; color: #474f62; border-radius: 6px; font-size: .8125rem; }
 .team-counts .team-count-pending { background: #fff1d6; color: #764a10; }
-.team-member-role { border-top: 1px solid var(--line); padding: 12px 16px 0; font-size: .875rem; color: var(--muted); }
+.team-member-role { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; border-top: 1px solid var(--line); padding: 12px 16px 0; font-size: .875rem; color: var(--muted); }
 .team-details { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr)); gap: 12px; padding: 12px 16px 16px; }
 .team-details section { min-width: 0; padding: 10px; background: #f7f8fb; border-radius: 8px; font-size: .875rem; overflow-wrap: anywhere; }
 .team-details h2 { font-size: .875rem; margin-bottom: 5px; }

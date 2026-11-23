@@ -1,6 +1,9 @@
+import Link from "next/link";
 import { Icon } from "@/components/icon";
+import type { Role } from "@/generated/prisma/enums";
 import type { AccessScope } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { canGrantSupervisorAccess } from "@/lib/directory";
 import { operationalDeliveryWhere, requestWhere } from "@/lib/equipment-access";
 import { jobTitleKey, latestByItem, requestLabels } from "@/lib/equipment";
 import { openRequestStatuses } from "@/lib/reporting";
@@ -15,6 +18,7 @@ type TeamMember = {
   department: string;
   jobTitle: string;
   supervisor: { name: string } | null;
+  scope: { role: Role; active: boolean } | null;
   active: boolean;
 };
 
@@ -28,7 +32,7 @@ export async function TeamOverview({ scope, people, awaitingReceipt }: {
     db.delivery.findMany({
       where: { ...operationalDeliveryWhere(scope), employeeId },
       select: {
-        id: true, employeeId: true, equipmentId: true, quantity: true,
+        id: true, employeeId: true, equipmentId: true, quantity: true, warehouseId: true,
         equipment: { select: { name: true } },
         receipt: { select: { deliveryId: true } },
         retirement: { select: { deliveryId: true } },
@@ -54,8 +58,8 @@ export async function TeamOverview({ scope, people, awaitingReceipt }: {
   const requestsByPerson = Map.groupBy(requests, ({ employeeId }) => employeeId);
   const members = people.map((person) => {
     const delivered = deliveriesByPerson.get(person.id) ?? [];
-    const current = latestByItem(delivered.filter(({ receipt }) => receipt)).filter(({ retirement }) => !retirement);
-    const pending = delivered.filter(({ receipt, retirement }) => !receipt && !retirement);
+    const current = latestByItem(delivered.filter(({ receipt, warehouseId }) => receipt || !warehouseId)).filter(({ retirement }) => !retirement);
+    const pending = delivered.filter(({ receipt, retirement, warehouseId }) => warehouseId && !receipt && !retirement);
     const open = requestsByPerson.get(person.id) ?? [];
     const byItem = new Map<string, (typeof expected)[number]>();
     if (person.active) {
@@ -93,7 +97,17 @@ export async function TeamOverview({ scope, people, awaitingReceipt }: {
         </span>
         <Icon name="expand_more" />
       </summary>
-      <p className="team-member-role">{person.jobTitle} · {person.department}{person.supervisor && ` · Encarregado: ${person.supervisor.name}`}</p>
+      <div className="team-member-role">
+        <p>{person.jobTitle} · {person.department}{person.supervisor && ` · Encarregado: ${person.supervisor.name}`}</p>
+        {person.active && <div className="row-actions">
+        <Link className="text-action" href={`/${scope.companyId}/entregas?edit=ficha&colaborador=${encodeURIComponent(person.id)}`}>Registrar ficha de papel</Link>
+        {canGrantSupervisorAccess(scope) && (
+          person.scope?.active && person.scope.role === "SUPERVISOR" ? <span className="badge active">Perfil Encarregado</span> :
+          (!person.scope || (person.scope.active && person.scope.role === "EMPLOYEE")) &&
+          <Link className="text-action" href={`/${scope.companyId}/colaboradores?encarregado=${encodeURIComponent(person.id)}`}>Dar acesso de encarregado</Link>
+        )}
+        </div>}
+      </div>
       <div className="team-details">
         <section><h2>Itens em uso</h2>{current.length ?
           <ul>{current.map((item) => <li key={item.id}>{item.equipment.name} <small>· Qtd. {item.quantity}</small></li>)}</ul> :

@@ -50,7 +50,7 @@ Para usar o Chrome instalado, defina `$env:PLAYWRIGHT_CHANNEL = 'chrome'`. A su�
 
 1. Use o repositório GitHub do projeto e a branch `main`. No Vercel, selecione **Next.js** e a raiz `./`. O build padrão usa `npm run build`.
 2. Conecte o PostgreSQL do Neon ao projeto. Confirme que `DATABASE_URL` está disponível como segredo no ambiente **Production**. Deixe `LOCAL_HTTP` sem configuração em produção. Use banco separado para testar antes de liberar uma alteração.
-3. Antes de publicar código que depende de uma nova migração, execute `npm run db:migrate` no banco de destino, a partir de um ambiente autorizado com acesso ao segredo. Se o provedor fornecer uma URL direta para migração, use-a somente no processo de migração e mantenha a conexão configurada para o aplicativo no Vercel.
+3. O build de produção no Vercel aplica as migrações antes da compilação. Para a migração, usa `DATABASE_URL_UNPOOLED` quando disponível e `DATABASE_URL` nos demais casos. Para outros ambientes, execute `npm run db:migrate` com a conexão do banco correspondente.
 4. Em um banco novo, execute `npm run db:seed` uma vez com `INITIAL_ADMIN_NAME`, `INITIAL_ADMIN_EMAIL` e `INITIAL_ADMIN_PASSWORD` disponíveis somente ao processo de inicialização. Com a integração do Neon, os segredos do Vercel podem estar disponíveis durante o deploy e protegidos contra cópia pelo CLI. Nesse caso, faça a inicialização em um ambiente seguro que já receba esses segredos.
 5. Publique ou faça **Redeploy** após configurar as variáveis. Abra `/login` no domínio final e confira o acesso, a seleção de empresa e a **Visão geral**.
 
@@ -63,7 +63,7 @@ Consulte os guias de [deploy pelo GitHub](https://vercel.com/docs/git), [Postgre
 | O deploy abre, mas o login falha para todos | Confira a conexão de produção, as migrações e a criação do administrador. Após alterar a variável no Vercel, faça um novo deploy. |
 | O login local vai e volta para a tela de entrada | Confira se o app foi iniciado em modo de produção por HTTP local. Nesse caso use `LOCAL_HTTP=true` no processo local. |
 | Conta entra mas não tem acesso à empresa | Confira o vínculo ativo em **Acessos e perfis**. Colaborador e encarregado também precisam ter cadastro pessoal ativo. |
-| Entrega não lista almoxarifado ou lote | Confira a unidade do destinatário e o saldo completo em lote elegível, além da validade, do bloqueio e dos indicadores do item. |
+| Entrega não lista almoxarifado ou item | Confira a unidade do destinatário e se o almoxarifado está ativo. Cadastre uma entrada para disponibilizar o item e confira o saldo disponível e a validade. |
 | Banco e aplicativo parecem ter versões diferentes | Confira a versão publicada e as migrações aplicadas no mesmo ambiente antes de repetir o deploy. |
 
 O PostgreSQL guarda cadastros, saldos, movimentos, sessões e anexos. Inclua-o no backup e valide a restauração em um ambiente separado.

@@ -255,7 +255,7 @@ model StockMovement {
   actor        User @relation(fields: [actorId], references: [id], onDelete: Restrict)
   delivery     Delivery? @relation(fields: [companyId, deliveryId], references: [companyId, id], onDelete: Restrict)
 
-  @@unique([companyId, deliveryId])
+  @@index([companyId, deliveryId])
   @@index([companyId, warehouseId, lotId, occurredAt])
 }
 
@@ -303,8 +303,8 @@ model Delivery {
   id             String
   employeeId     String
   equipmentId    String
-  warehouseId    String
-  lotId          String
+  warehouseId    String?
+  lotId          String?
   actorId        String
   requestId      String?
   quantity       Int
@@ -315,10 +315,10 @@ model Delivery {
   createdAt      DateTime @default(now())
   employee       Employee @relation(fields: [companyId, employeeId], references: [companyId, id], onDelete: Restrict)
   equipment      Equipment @relation(fields: [companyId, equipmentId], references: [companyId, id], onDelete: Restrict)
-  stock          Stock @relation(fields: [companyId, warehouseId, lotId], references: [companyId, warehouseId, lotId], onDelete: Restrict)
+  stock          Stock? @relation(fields: [companyId, warehouseId, lotId], references: [companyId, warehouseId, lotId], onDelete: Restrict)
   actor          User @relation(fields: [actorId], references: [id], onDelete: Restrict)
   request        EquipmentRequest? @relation(fields: [companyId, requestId], references: [companyId, id], onDelete: Restrict)
-  movement       StockMovement?
+  movements      StockMovement[]
   proof          DeliveryProof?
   receipt        DeliveryReceipt?
   retirement     DeliveryRetirement?
