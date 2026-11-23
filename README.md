@@ -49,7 +49,7 @@ Para terceiros, informe o empregador em **Empresa terceirizada**, por exemplo, L
 
 1. Cadastre o item como EPI ou uniforme, um almoxarifado vinculado à unidade, um lote e uma entrada de estoque.
 2. Para uma solicitação, entre como Colaborador e informe o item, a quantidade e o motivo. O pedido segue para atendimento. Se estiver fora do catálogo, o almoxarifado identifica o item antes da entrega.
-3. Em **Solicitações**, os perfis operacionais veem o saldo da unidade e o que falta para atender. **Alertas** mostra saldo baixo ou zerado, com limite de cinco unidades disponíveis por item e unidade. As regras de aprovação ficam guardadas para uso futuro, com o fluxo de aprovação desativado por padrão.
+3. Em **Solicitações**, os perfis operacionais veem o saldo da unidade e o que falta para atender. **Alertas** mostra saldo baixo ou zerado, com limite configurável por item e unidade e padrão de cinco unidades. As regras de aprovação ficam guardadas para uso futuro, com o fluxo de aprovação desativado por padrão.
 4. Administrador, Gestor, Encarregado e Almoxarifado podem registrar entregas no seu escopo. O sistema baixa o saldo, registra a entrega e conclui a solicitação em uma única transação. O anexo PDF, PNG ou JPEG de até 3 MB é opcional.
 5. Em **Meus itens**, o colaborador usa **Confirmo que recebi** na seção **Aguardando confirmação**. O item passa para **Itens em uso** e a confirmação aparece no histórico com autor, data e hora.
 

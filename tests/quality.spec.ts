@@ -506,7 +506,7 @@ test("o gestor define um mínimo na unidade e o alerta usa o saldo elegível", a
   await expect(alert).toContainText("Sem saldo disponível");
   await page.goto("/tsa/estoque?acao=minimos");
   await page.getByRole("button", { name: "Usar padrão" }).click();
-  await expect(page.getByText(scenario.hidden.item.name, { exact: true, selector: "td div" })).toHaveCount(0);
+  await expect(page.locator("tbody tr").filter({ hasText: scenario.hidden.item.name })).toHaveCount(0);
   await page.goto("/tsa/alertas?tipo=estoque");
   await expect(alert).toHaveCount(0);
   await signOut(page);
