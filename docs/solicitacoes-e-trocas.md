@@ -5,7 +5,9 @@
 1. Abra **Solicitações → Meus pedidos → Solicitar item**. No perfil Colaborador, **Solicitações** abre a área pessoal diretamente.
 2. Busque e selecione um item ativo, informe a quantidade e o motivo e envie. Cada solicitação trata de um item.
 3. Se o item estiver fora da lista, use **Não encontrei o item**, descreva o que precisa e envie. Um operador autorizado abre o pedido e usa **Vincular ao catálogo**. Pode cadastrar o item primeiro, se necessário.
-4. Na configuração atual, o pedido identificado vai para a fila **Aguardando entrega** sem passar pelo encarregado. Nessa fila, os operadores veem a disponibilidade na unidade e a quantidade que falta.
+4. Na configuração atual, o pedido identificado vai direto para **Aguardando entrega**. A fila operacional permite separar **Pronto para entregar**, **Falta estoque** e **Item a identificar**. Para saldo insuficiente, a tela mostra a quantidade em falta. Se o total estiver distribuído e nenhuma posição de estoque atender o pedido inteiro, a tela indica saldo dividido.
+
+Em **Meus pedidos**, o colaborador acompanha o envio, a situação atual, a entrega e a confirmação do recebimento. Quando a entrega é registrada, **Ir para confirmação** leva ao registro em **Meus itens**. A disponibilidade nesse acompanhamento é calculada para a unidade atual do colaborador.
 
 ## Situações do pedido
 

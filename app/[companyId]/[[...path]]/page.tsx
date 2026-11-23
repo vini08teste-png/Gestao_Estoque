@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import { resetUserPassword, saveCompany, saveEmployee, saveUnit, saveUser } from "@/app/organization-actions";
 import { AccessScopeFields } from "@/components/access-scope-fields";
 import { ActionForm } from "@/components/action-form";
-import { Catalog, Deliveries, Inventory, Requests, Rules } from "@/components/equipment-pages";
+import { Catalog, Deliveries, ExpectedItems, Inventory, Requests, Rules } from "@/components/equipment-pages";
 import { Alerts, Dashboard, Reports } from "@/components/reporting-pages";
 import { TeamOverview } from "@/components/team-overview";
 import { sections, Workspace, type Section } from "@/components/workspace";
@@ -12,6 +12,7 @@ import { canAdminister, requireScope, type AccessScope } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { canAddEmployees, employeesWhere, unitsWhere } from "@/lib/directory";
 import { companyBrands, isCompany, roles } from "@/lib/organization";
+import { passwordLength } from "@/lib/password";
 import type { Role } from "@/generated/prisma/enums";
 
 type Query = { [key: string]: string | string[] | undefined };
@@ -217,7 +218,7 @@ async function Users({ scope, edit, viewerId, profile, employeeId }: {
                 {!current && <small>Use o e-mail da conta. Se ela já existir, informe o mesmo endereço para vincular o acesso.</small>}
               </label>
               {!current && (
-                <label className="field">Senha temporária<input name="password" type="password" autoComplete="new-password" minLength={12} maxLength={128} />
+                <label className="field">Senha temporária<input name="password" type="password" autoComplete="new-password" minLength={passwordLength.min} maxLength={passwordLength.max} />
                   <small>Defina para contas novas. A pessoa trocará essa senha no primeiro login. Para uma conta existente, deixe em branco.</small>
                 </label>
               )}
@@ -234,7 +235,7 @@ async function Users({ scope, edit, viewerId, profile, employeeId }: {
           <ActionForm action={resetUserPassword.bind(null, companyId, current.userId)} label="Redefinir senha" reset>
             <p>Isso encerra as sessões da conta. Informe a senha temporária à pessoa por um canal privado.</p>
             <label className="field">Nova senha temporária
-              <input name="temporaryPassword" type="password" autoComplete="new-password" minLength={12} maxLength={128} required />
+              <input name="temporaryPassword" type="password" autoComplete="new-password" minLength={passwordLength.min} maxLength={passwordLength.max} required />
             </label>
           </ActionForm>
         </details>}
@@ -318,13 +319,15 @@ export default async function CompanyPage({ params, searchParams }: {
     estoque: <Inventory scope={scope} operation={typeof search.acao === "string" ? search.acao : ""} />,
     entregas: <Deliveries scope={scope} create={edit === "novo"} requestId={typeof search.solicitacao === "string" ? search.solicitacao : ""}
       registered={search.registrada === "1"} />,
-    solicitacoes: <Requests scope={scope} edit={edit} status={typeof search.status === "string" ? search.status : ""} sent={search.enviada === "1"} />,
+    solicitacoes: <Requests scope={scope} edit={edit} status={typeof search.status === "string" ? search.status : ""}
+      queue={typeof search.fila === "string" ? search.fila : ""} sent={search.enviada === "1"} />,
     "meus-epis": <Deliveries scope={scope} create={false} requestId="" registered={false} personal retired={search.retirado === "1"} />,
     "minhas-solicitacoes": <Requests scope={scope} edit={edit} status={typeof search.status === "string" ? search.status : ""}
       sent={search.enviada === "1"} personal />,
     alertas: <Alerts scope={scope} query={search} />,
     relatorios: <Reports scope={scope} query={search} />,
     "regras-aprovacao": <Rules scope={scope} />,
+    "itens-esperados": <ExpectedItems scope={scope} />,
   };
   return <Workspace scope={scope} companies={companies} section={section}>{content[section]}</Workspace>;
 }

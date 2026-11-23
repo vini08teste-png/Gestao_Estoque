@@ -3,6 +3,7 @@ import type { Prisma } from "@/generated/prisma/client";
 import type { AccessScope } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { unitsWhere } from "@/lib/directory";
+import { requestWhere } from "@/lib/equipment-access";
 import { todayInBrazil } from "@/lib/equipment";
 
 export const lowStockLimit = 5;
@@ -19,12 +20,13 @@ type StockBalance = {
   largestLot: number;
 };
 
-export async function stockBalances(scope: AccessScope, unitIds: string[] = [], equipmentIds: string[] = []) {
+export async function stockBalances(scope: AccessScope, unitIds: string[] = [], equipmentIds: string[] = [], personal = false) {
   const today = todayInBrazil();
+  const unitAccess = personal ? { id: scope.employee?.unitId ?? "" } : unitsWhere(scope);
   const rows = await db.stock.findMany({
     where: {
       companyId: scope.companyId,
-      warehouse: { active: true, unit: { ...unitsWhere(scope), active: true, ...(unitIds.length && { AND: [{ id: { in: unitIds } }] }) } },
+      warehouse: { active: true, unit: { ...unitAccess, active: true, ...(unitIds.length && { AND: [{ id: { in: unitIds } }] }) } },
       lot: { equipment: { active: true }, ...(equipmentIds.length && { equipmentId: { in: equipmentIds } }) },
     },
     select: {
@@ -52,6 +54,30 @@ export async function stockAlerts(scope: AccessScope, unitId = "") {
   const balances = await stockBalances(scope, unitId ? [unitId] : []);
   return [...balances.entries()].filter(([, row]) => row.quantity <= lowStockLimit)
     .sort(([, a], [, b]) => a.quantity - b.quantity || a.equipment.localeCompare(b.equipment, "pt-BR") || a.unit.localeCompare(b.unit, "pt-BR"));
+}
+
+export async function stockDemand(scope: AccessScope, unitId = "") {
+  const requests = await db.equipmentRequest.findMany({
+    where: { AND: [requestWhere(scope), { unit: { active: true }, employee: { active: true },
+      ...(unitId && { unitId }), status: "WAITING_DELIVERY", equipment: { active: true } }] },
+    select: { unitId: true, unit: { select: { name: true } }, equipment: { select: { id: true, name: true } }, quantity: true },
+  });
+  if (!requests.length) return [];
+  const totals = new Map<string, { unit: string; equipment: string; requested: number }>();
+  for (const row of requests) {
+    if (!row.equipment) continue;
+    const key = stockKey(row.unitId, row.equipment.id);
+    const total = totals.get(key) ?? { unit: row.unit.name, equipment: row.equipment.name, requested: 0 };
+    total.requested += row.quantity;
+    totals.set(key, total);
+  }
+  const stock = await stockBalances(scope, [...new Set(requests.map(({ unitId }) => unitId))],
+    [...new Set(requests.flatMap(({ equipment }) => equipment ? [equipment.id] : []))]);
+  return [...totals].map(([id, row]) => {
+    const available = stock.get(id)?.quantity ?? 0;
+    return { id, ...row, available, missing: Math.max(0, row.requested - available) };
+  }).sort((a, b) => b.missing - a.missing || a.unit.localeCompare(b.unit, "pt-BR") ||
+    a.equipment.localeCompare(b.equipment, "pt-BR"));
 }
 
 export function requestAvailability(balance: StockBalance | undefined, requested: number) {

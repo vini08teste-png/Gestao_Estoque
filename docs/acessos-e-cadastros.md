@@ -27,7 +27,7 @@ O administrador edita registros existentes. Para corrigir a unidade de um cadast
 
 1. Como administrador, encontre a pessoa em **Colaboradores** e clique em **Configurar acesso**.
 2. Confira o **Colaborador vinculado**, defina o **Perfil de trabalho** e informe o e-mail usado no login.
-3. Para uma conta nova, defina uma senha temporária de 12 a 128 caracteres. Para vincular uma conta existente a outra empresa, use o mesmo e-mail e deixe o campo da senha vazio.
+3. Para uma conta nova, defina uma senha temporária de 6 a 128 caracteres. Para vincular uma conta existente a outra empresa, use o mesmo e-mail e deixe o campo da senha vazio.
 4. Em perfis **Gestor** e **Almoxarifado**, escolha as unidades autorizadas ou marque **Todas as unidades**. Para **Encarregado** e **Colaborador**, o vínculo pessoal é obrigatório e determina a unidade.
 5. Na primeira entrada com senha temporária, a pessoa cria a própria senha e depois entra de novo.
 

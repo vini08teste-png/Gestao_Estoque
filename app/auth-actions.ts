@@ -4,13 +4,13 @@ import { redirect } from "next/navigation";
 import { allowLogin, createSession, endSession, loadViewer } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { emailAddress, validEmail, type FormResult } from "@/lib/forms";
-import { hashPassword, validPassword, verifyPassword } from "@/lib/password";
+import { hashPassword, passwordLength, passwordLengthText, validPassword, verifyPassword } from "@/lib/password";
 
 export async function login(_: FormResult, data: FormData): Promise<FormResult> {
   const email = emailAddress(data);
   const password = data.get("password");
   const error = { error: "Não foi possível entrar. Confira suas credenciais ou tente mais tarde." };
-  if (!validEmail(email) || typeof password !== "string" || !password || password.length > 128) return error;
+  if (!validEmail(email) || typeof password !== "string" || !password || password.length > passwordLength.max) return error;
   if (!(await allowLogin(email))) return error;
   const user = await db.user.findUnique({
     where: { email },
@@ -33,9 +33,9 @@ export async function changePassword(_: FormResult, data: FormData): Promise<For
   const current = data.get("currentPassword");
   const password = data.get("password");
   if (typeof password !== "string" || !validPassword(password) || password !== data.get("confirmation")) {
-    return { error: "Use uma senha com 12 a 128 caracteres e repita o mesmo valor no campo de confirmação." };
+    return { error: `Use uma senha com ${passwordLengthText} caracteres e repita o mesmo valor no campo de confirmação.` };
   }
-  if (typeof current !== "string" || !current || current.length > 128) return { error: "Informe a senha atual." };
+  if (typeof current !== "string" || !current || current.length > passwordLength.max) return { error: "Informe a senha atual." };
   if (current === password) return { error: "Escolha uma senha diferente da atual." };
   const user = await db.user.findUnique({ where: { id: viewer.id }, select: { passwordHash: true } });
   if (!user || !await allowLogin(`password-change:${viewer.id}`) || !await verifyPassword(current, user.passwordHash)) {

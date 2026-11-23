@@ -24,6 +24,7 @@ export const sections = {
   alertas: "Alertas",
   relatorios: "Relatórios",
   "regras-aprovacao": "Regras de aprovação",
+  "itens-esperados": "Itens esperados",
 };
 
 export type Section = keyof typeof sections;
@@ -43,6 +44,7 @@ const sectionIcons: Record<Section, string> = {
   alertas: "notifications",
   relatorios: "bar_chart",
   "regras-aprovacao": "rule",
+  "itens-esperados": "list_alt",
 };
 
 export function Workspace({ scope, companies, section, children }: {
@@ -60,7 +62,7 @@ export function Workspace({ scope, companies, section, children }: {
     { heading: "Minha área", items: personal ? ["meus-epis", ...(employee ? ["minhas-solicitacoes", "colaboradores"] as const : [])] : [] },
     { heading: "Operação", items: employee ? [] : ["solicitacoes", "colaboradores", "entregas", "estoque", "epis"] },
     { heading: "Acompanhamento", items: employee ? [] : ["alertas", "relatorios"] },
-    { heading: admin ? "Administração" : "Cadastros", items: admin ? ["usuarios", "unidades", "regras-aprovacao", "empresa"] : ["unidades"] },
+    { heading: admin ? "Administração" : "Cadastros", items: admin ? ["usuarios", "unidades", "itens-esperados", "regras-aprovacao", "empresa"] : ["unidades"] },
   ];
   const label = (item: Section) => {
     if (employee) {

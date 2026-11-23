@@ -12,7 +12,7 @@ export function DeliveryFields({ people, stocks, today, request }: {
   request?: { name: string; equipment: string; quantity: number; unitId: string; minDate: string };
 }) {
   const [person, setPerson] = useState("");
-  const [stock, setStock] = useState("");
+  const [stock, setStock] = useState(() => request && stocks.length === 1 ? stocks[0].key : "");
   const personId = useId();
   const stockId = useId();
   const proofId = useId();
@@ -21,7 +21,11 @@ export function DeliveryFields({ people, stocks, today, request }: {
   return (
     <>
       {request ? (
-        <p><strong>{request.name}</strong> · {request.equipment} · Quantidade: {request.quantity}</p>
+        <dl className="delivery-summary">
+          <div><dt>Colaborador</dt><dd>{request.name}</dd></div>
+          <div><dt>Item</dt><dd>{request.equipment}</dd></div>
+          <div><dt>Quantidade</dt><dd>{request.quantity}</dd></div>
+        </dl>
       ) : (
         <div className="field">
           <label htmlFor={personId}>Colaborador</label>
@@ -42,11 +46,14 @@ export function DeliveryFields({ people, stocks, today, request }: {
         {!request && <label className="field">Quantidade<input name="quantity" type="number" min={1} max={1_000_000} defaultValue={1} required /></label>}
         <label className="field">Data da entrega<input name="deliveredAt" type="date" defaultValue={today} min={request?.minDate} max={today} required /></label>
       </div>
-      <div className="field">
-        <label htmlFor={proofId}>Anexo de entrega (opcional)</label>
-        <input id={proofId} name="proof" type="file" accept="application/pdf,image/png,image/jpeg" aria-describedby={proofId + "-help"} />
-        <small id={proofId + "-help"}>PDF, PNG ou JPEG de até 3 MB. O colaborador confirma o recebimento pelo sistema.</small>
-      </div>
+      <details className="record-details delivery-proof">
+        <summary>Anexo de entrega (opcional)</summary>
+        <div className="field">
+          <label htmlFor={proofId}>Comprovante</label>
+          <input id={proofId} name="proof" type="file" accept="application/pdf,image/png,image/jpeg" aria-describedby={proofId + "-help"} />
+          <small id={proofId + "-help"}>PDF, PNG ou JPEG de até 3 MB.</small>
+        </div>
+      </details>
     </>
   );
 }

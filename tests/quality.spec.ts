@@ -107,8 +107,11 @@ test("encarregado rejeita um pedido com justificativa e aprova outro para entreg
   }
   await signOut(page);
   await signIn(page, scenario.operator);
-  await page.goto(`/tsa/entregas?solicitacao=${approved.id}`);
-  await page.getByLabel("Almoxarifado e lote").selectOption(scenario.uniform.stockValue);
+  await page.setViewportSize({ width: 360, height: 800 });
+  await page.goto("/tsa/solicitacoes?fila=prontos");
+  await page.getByRole("article").filter({ hasText: approved.reason }).getByRole("link", { name: "Atender pedido" }).click();
+  await expect(page.getByLabel("Almoxarifado e lote")).toHaveValue(scenario.uniform.stockValue);
+  await expect(page.locator(".delivery-summary")).toContainText(scenario.uniform.item.name);
   await page.getByRole("button", { name: "Confirmar entrega" }).click();
   await expect(page.getByRole("status")).toHaveText("Entrega registrada e saldo atualizado.");
   const delivery = await db.delivery.findUniqueOrThrow({
@@ -117,9 +120,14 @@ test("encarregado rejeita um pedido com justificativa e aprova outro para entreg
   expect(delivery.proof).toBeNull();
   expect(delivery.receipt).toBeNull();
   await expect(page.getByRole("button", { name: "Confirmo que recebi" })).toHaveCount(0);
+  await page.setViewportSize({ width: 1280, height: 800 });
   await signOut(page);
   await signIn(page, scenario.employeeAccount);
-  await page.goto("/tsa/meus-epis");
+  await page.goto("/tsa/minhas-solicitacoes");
+  const personalOrder = page.getByRole("article").filter({ hasText: approved.reason });
+  await expect(personalOrder.locator('[aria-current="step"]')).toContainText("Entregue em");
+  await personalOrder.getByRole("link", { name: "Ir para confirmação" }).click();
+  await expect(page).toHaveURL(new RegExp(`#entrega-${delivery.id}$`));
   const awaitingReceipt = page.getByRole("region", { name: "Aguardando confirmação" });
   const inUse = page.getByRole("region", { name: "Itens em uso" });
   await expect(awaitingReceipt).toContainText(scenario.uniform.item.name);
@@ -136,6 +144,8 @@ test("encarregado rejeita um pedido com justificativa e aprova outro para entreg
   const history = page.getByRole("region", { name: "Resultados" });
   await expect(history.getByRole("cell", { name: scenario.uniform.item.name })).toBeVisible();
   expect(await history.evaluate((element) => element.scrollWidth)).toBe(await history.evaluate((element) => element.clientWidth));
+  await page.goto("/tsa/minhas-solicitacoes");
+  await expect(personalOrder.locator('[aria-current="step"]')).toHaveText("Recebimento confirmado");
 });
 
 test("duas entregas simultâneas para a última unidade geram uma baixa", async ({ browser, page, baseURL }) => {
@@ -338,6 +348,8 @@ test("pedidos vão direto para atendimento e os perfis operacionais veem o saldo
   await page.getByLabel("Motivo").fill("Pedido fora da lista");
   await page.getByRole("button", { name: "Enviar solicitação" }).click();
   await expect(page.getByRole("status")).toHaveText("Solicitação enviada.");
+  await expect(page.getByRole("article").filter({ hasText: "Pedido sem saldo suficiente" })
+    .locator('[aria-current="step"]')).toHaveText("Aguardando estoque");
   await signOut(page);
   for (const account of [scenario.manager, scenario.supervisor, scenario.operator]) {
     await signIn(page, account);
@@ -353,7 +365,17 @@ test("pedidos vão direto para atendimento e os perfis operacionais veem o saldo
     await expect(shortage).toContainText("Verifique reposição ou compra");
     if (account !== scenario.operator) await signOut(page);
   }
-  await page.goto("/tsa/solicitacoes?status=WAITING_CATALOG");
+  await page.goto("/tsa/alertas?tipo=demanda");
+  const [warehouseId, lotId] = scenario.uniform.stockValue.split("|");
+  const stock = await db.stock.findUniqueOrThrow({ where: { companyId_warehouseId_lotId: { companyId, warehouseId, lotId } } });
+  const demand = page.getByRole("region", { name: "Saldo para pedidos em aberto" }).getByRole("listitem")
+    .filter({ hasText: scenario.uniform.item.name });
+  await expect(demand).toContainText(`9 pedidas · ${stock.quantity} disponíveis`);
+  await expect(demand).toContainText(`Faltam ${9 - stock.quantity} un.`);
+  await page.goto("/tsa/solicitacoes?fila=falta-estoque");
+  await expect(page.getByRole("article").filter({ hasText: "Pedido com saldo" })).toHaveCount(0);
+  await expect(page.getByRole("article").filter({ hasText: "Pedido sem saldo suficiente" })).toBeVisible();
+  await page.goto("/tsa/solicitacoes?fila=identificar");
   const unknown = page.getByRole("article").filter({ hasText: "Camiseta de reposição" });
   await unknown.getByText("Ver detalhes").click();
   await unknown.getByLabel("Item correspondente").selectOption(scenario.uniform.item.id);
@@ -373,12 +395,20 @@ test("colaborador terceirizado pode liderar a equipe da unidade onde atua", asyn
   const email = `encarregado-luk-${scenario.tag}@example.test`;
   const adminEmail = `admin-luk-${scenario.tag}@example.test`;
   const password = scenario.supervisor.password;
+  const temporaryPassword = "Tmp-61";
   await db.user.create({ data: {
     email: adminEmail,
     passwordHash: scenario.supervisor.passwordHash,
     scopes: { create: { companyId, name: "Administrador de teste", role: "ADMIN", allUnits: true } },
   } });
   await signIn(page, { email: adminEmail, password });
+  await page.goto("/tsa/itens-esperados");
+  await page.locator('select[name="unit"]').selectOption(scenario.unit.id);
+  await page.getByLabel("Função").fill("COLABORADOR");
+  await page.locator('select[name="equipment"]').selectOption(scenario.hidden.item.id);
+  await page.getByLabel("Quantidade").fill("2");
+  await page.getByRole("button", { name: "Salvar item esperado" }).click();
+  await expect(page.getByRole("status")).toHaveText("Alterações salvas.");
   await page.goto("/tsa/colaboradores?edit=novo");
   await page.getByLabel("Nome completo").fill(name);
   await page.getByLabel("Matrícula").fill(registration);
@@ -394,7 +424,7 @@ test("colaborador terceirizado pode liderar a equipe da unidade onde atua", asyn
   await contractor.getByRole("link", { name: /Configurar acesso/ }).click();
   await expect(page.locator('select[name="employee"] option:checked')).toContainText("LUK");
   await page.getByLabel(/E-mail usado no login/).fill(email);
-  await page.getByLabel(/Senha temporária/).fill(password);
+  await page.getByLabel(/Senha temporária/).fill(temporaryPassword);
   await page.getByLabel(/Perfil de trabalho/).selectOption("SUPERVISOR");
   await page.getByRole("button", { name: "Salvar", exact: true }).click();
   await expect(page.getByRole("status")).toHaveText("Alterações salvas.");
@@ -411,11 +441,11 @@ test("colaborador terceirizado pode liderar a equipe da unidade onde atua", asyn
 
   await signOut(page);
   await page.getByLabel("E-mail").fill(email);
-  await page.getByLabel("Senha", { exact: true }).fill(password);
+  await page.getByLabel("Senha", { exact: true }).fill(temporaryPassword);
   await page.getByRole("button", { name: "Entrar", exact: true }).click();
   await expect(page).toHaveURL(/\/conta\/senha$/);
-  const newPassword = `Nova-${randomUUID()}`;
-  await page.locator('input[name="currentPassword"]').fill(password);
+  const newPassword = "Nov-62";
+  await page.locator('input[name="currentPassword"]').fill(temporaryPassword);
   await page.locator('input[name="password"]').fill(newPassword);
   await page.locator('input[name="confirmation"]').fill(newPassword);
   await page.getByRole("button", { name: "Salvar nova senha" }).click();
@@ -423,7 +453,10 @@ test("colaborador terceirizado pode liderar a equipe da unidade onde atua", asyn
   await signIn(page, { email, password: newPassword });
   await page.goto("/tsa/colaboradores");
   await expect(page.getByRole("heading", { name: "Minha equipe" })).toBeVisible();
-  await expect(page.locator(".team-member").filter({ hasText: scenario.worker.name })).toBeVisible();
+  const member = page.locator(".team-member").filter({ hasText: scenario.worker.name });
+  await member.locator("summary").click();
+  await expect(member.locator(".team-details").getByText(scenario.hidden.item.name, { exact: true })).toBeVisible();
+  await expect(member.locator(".team-details").getByText("Faltam 2 un.", { exact: true })).toBeVisible();
   await expect(page.getByText(scenario.outside.name, { exact: true })).toHaveCount(0);
 });
 

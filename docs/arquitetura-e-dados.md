@@ -27,6 +27,7 @@ O aplicativo usa Next.js com App Router, React e TypeScript. As páginas protegi
 | `/{empresa}/epis`, `/estoque`, `/entregas`, `/solicitacoes` | Catálogo, inventário, histórico e fila operacional. |
 | `/{empresa}/meus-epis` e `/{empresa}/minhas-solicitacoes` | Área pessoal do usuário com vínculo ativo. |
 | `/{empresa}/alertas`, `/relatorios`, `/regras-aprovacao` | Acompanhamento e configuração. |
+| `/{empresa}/itens-esperados` | Cadastro administrativo de itens esperados por função ou unidade. |
 | `/exportar/{empresa}` | CSV com os filtros do relatório. |
 | `/comprovantes/{empresa}/{entrega}` | Download privado de comprovante de entrega. |
 | `/fotos-de-troca/{empresa}/{pedido}` | Exibição privada da foto de troca. |
@@ -40,6 +41,7 @@ O aplicativo usa Next.js com App Router, React e TypeScript. As páginas protegi
 | `User`, `UserScope`, `ScopeUnit` | Um e-mail identifica a conta. O vínculo por empresa define perfil, colaborador associado e unidades autorizadas. |
 | `Session`, `LoginAttempt` | Guardam as sessões e as janelas de tentativas de autenticação. |
 | `Equipment`, `EquipmentLot`, `Stock` | Um item pode ter vários lotes. A chave do saldo inclui empresa, almoxarifado e lote. |
+| `ExpectedItem` | Vincula um item e uma quantidade a uma função, uma unidade ou à combinação dos dois dentro da empresa. |
 | `StockMovement`, `Delivery` | Movimentos positivos registram entradas. A entrega cria uma movimentação negativa vinculada à saída. |
 | `EquipmentRequest`, `ApprovalRule` | O pedido guarda solicitante, unidade, item ou descrição e situação. As regras guardam exigência de aprovação por unidade e, opcionalmente, por item. |
 | `DeliveryReceipt`, `DeliveryRetirement` | Registram a confirmação do destinatário e a retirada de uso com autor e horário. |

@@ -25,6 +25,7 @@ model Company {
   employees Employee[]
   scopes    UserScope[]
   equipment Equipment[]
+  expectedItems ExpectedItem[]
 }
 
 model Unit {
@@ -38,6 +39,7 @@ model Unit {
   warehouses Warehouse[]
   rules ApprovalRule[]
   requests EquipmentRequest[]
+  expectedItems ExpectedItem[]
 
   @@id([companyId, id])
   @@unique([companyId, name])
@@ -165,9 +167,25 @@ model Equipment {
   requests    EquipmentRequest[]
   deliveries  Delivery[]
   rules       ApprovalRule[]
+  expectedFor ExpectedItem[]
 
   @@id([companyId, id])
   @@index([companyId, name])
+}
+
+model ExpectedItem {
+  companyId   String
+  id          String @default(cuid())
+  unitId      String?
+  jobTitle    String @default("")
+  equipmentId String
+  quantity    Int @default(1)
+  company     Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  unit        Unit? @relation(fields: [companyId, unitId], references: [companyId, id], onDelete: Restrict)
+  equipment   Equipment @relation(fields: [companyId, equipmentId], references: [companyId, id], onDelete: Restrict)
+
+  @@id([companyId, id])
+  @@index([companyId, unitId, jobTitle])
 }
 
 model Warehouse {

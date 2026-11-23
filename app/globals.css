@@ -186,6 +186,20 @@ button:disabled { cursor: wait; opacity: .68; }
 .request-tabs a { min-height: 44px; padding: 11px 15px; color: var(--muted); font-weight: 650; border-bottom: 2px solid transparent; }
 .request-tabs a[aria-current="page"] { color: var(--brand); border-bottom-color: var(--brand); }
 .request-tabs a:hover { background: var(--tint); }
+.queue-tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+.queue-tabs .button { gap: 8px; }
+.queue-tabs [aria-current="page"] { background: var(--tint); border-color: var(--brand); color: var(--brand); }
+.request-progress { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin: 12px 0 0; padding: 0; list-style: none; }
+.request-progress li { min-width: 0; padding: 7px 9px; border: 1px solid var(--line); border-radius: 7px; color: var(--muted); font-size: .8125rem; overflow-wrap: anywhere; }
+.request-progress .progress-done { color: #216043; border-color: #bedccf; }
+.request-progress [aria-current="step"] { color: var(--brand); background: var(--tint); border-color: var(--brand); font-weight: 700; }
+.request-action { width: fit-content; margin-top: 10px; }
+.delivery-summary { display: flex; flex-wrap: wrap; gap: 8px 24px; padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: #f7f8fb; }
+.delivery-summary > div { min-width: 0; overflow-wrap: anywhere; }
+.delivery-summary dt { color: var(--muted); font-size: .8125rem; }
+.delivery-summary dd { font-weight: 700; }
+.delivery-proof .field { margin-top: 8px; }
+.personal-equipment-card.awaiting-receipt { scroll-margin-top: 16px; }
 .catalog-alternative { justify-self: start; cursor: pointer; padding: 6px 0; }
 .request-list, .team-list { display: grid; gap: 10px; }
 .request-card { padding: 14px 16px; min-width: 0; }
@@ -377,6 +391,7 @@ tbody tr + tr { border-top: 1px solid var(--line); }
   .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .request-card-main { grid-template-columns: auto minmax(0, 1fr); }
   .request-card-main .badge { grid-column: 2; justify-self: start; }
+  .request-progress { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .team-member summary { grid-template-columns: auto minmax(0, 1fr) auto; }
   .team-counts { grid-area: 2 / 2 / 3 / -1; }
   .team-member summary > .app-icon:last-child { grid-area: 1 / 3; }
