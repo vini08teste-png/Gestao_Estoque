@@ -11,7 +11,7 @@ import { sections, Workspace, type Section } from "@/components/workspace";
 import { canAdminister, requireScope, type AccessScope } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { canAddEmployees, employeesWhere, unitsWhere } from "@/lib/directory";
-import { companyBrands, isCompany, roleFunctions, roles } from "@/lib/organization";
+import { companyBrands, isCompany, roles } from "@/lib/organization";
 import type { Role } from "@/generated/prisma/enums";
 
 type Query = { [key: string]: string | string[] | undefined };
@@ -119,14 +119,19 @@ async function Employees({ scope, edit, query, status, awaitingReceipt }: {
               <div className="form-grid">
                 <TextField name="registration" label="Matrícula" value={current?.registration} max={32} />
                 <TextField name="name" label="Nome completo" value={current?.name} />
+                <label className="field">Empresa terceirizada (opcional)
+                  <input name="contractorCompany" defaultValue={current?.contractorCompany ?? ""} maxLength={120} placeholder="Ex.: LUK" />
+                  <small>Informe a empresa empregadora se o colaborador for terceirizado.</small>
+                </label>
                 <label className="field">Unidade<select name="unit" defaultValue={current?.unitId ?? ""} required>
                   <option value="" disabled>Selecione</option>
                   {units.map((unit) => <option key={unit.id} value={unit.id}>{unit.name}{!unit.active ? " (inativa)" : ""}</option>)}
                 </select></label>
                 {scope.role !== "SUPERVISOR" && <label className="field">Encarregado responsável<select name="supervisor" defaultValue={current?.supervisorId ?? ""}>
                   <option value="">Sem encarregado</option>
-                  {people.map((person) => <option key={person.id} value={person.id}>{person.name} · {person.unit.name}</option>)}
-                </select><small>Escolha o encarregado da mesma unidade que acompanha este colaborador.</small></label>}
+                  {people.map((person) => <option key={person.id} value={person.id}>
+                    {person.name}{person.contractorCompany && ` · ${person.contractorCompany}`} · {person.unit.name}</option>)}
+                </select><small>Escolha o encarregado da mesma unidade. Ele pode ser de uma empresa terceirizada.</small></label>}
                 <TextField name="department" label="Setor" value={current?.department} />
                 <TextField name="jobTitle" label="Função" value={current?.jobTitle} />
               </div>
@@ -144,6 +149,7 @@ async function Employees({ scope, edit, query, status, awaitingReceipt }: {
       ...(query ? { OR: [
         { name: { contains: query, mode: "insensitive" } },
         { registration: { contains: query, mode: "insensitive" } },
+        { contractorCompany: { contains: query, mode: "insensitive" } },
       ] } : {}),
     },
     include: { unit: { select: { name: true } }, supervisor: { select: { name: true } }, scope: { select: { userId: true } } },
@@ -155,7 +161,7 @@ async function Employees({ scope, edit, query, status, awaitingReceipt }: {
         action={canCreate && <NewLink base={base}>Novo colaborador</NewLink>} />
       {scope.role !== "EMPLOYEE" && (
         <form className="filters" action={base}>
-          <label className="field">Nome ou matrícula<input name="q" type="search" maxLength={80} defaultValue={query} /></label>
+          <label className="field">Nome, matrícula ou terceirizada<input name="q" type="search" maxLength={80} defaultValue={query} /></label>
           <label className="field">Situação<select name="status" defaultValue={status}>
             <option value="">Todas</option><option value="ativo">Ativo</option><option value="inativo">Inativo</option>
           </select></label>
@@ -166,8 +172,8 @@ async function Employees({ scope, edit, query, status, awaitingReceipt }: {
         </form>
       )}
       {team ? <TeamOverview scope={scope} people={people} awaitingReceipt={awaitingReceipt} /> :
-      <Table label={title} columns={["Matrícula", "Nome", "Unidade", "Setor", "Função", "Encarregado", "Situação", ...(admin ? ["Ação"] : [])]}
-        rows={people.map((person) => [person.id, person.registration, person.name, person.unit.name, person.department,
+      <Table label={title} columns={["Matrícula", "Nome", "Empresa terceirizada", "Unidade", "Setor", "Função", "Encarregado", "Situação", ...(admin ? ["Ação"] : [])]}
+        rows={people.map((person) => [person.id, person.registration, person.name, person.contractorCompany ?? "—", person.unit.name, person.department,
           person.jobTitle, person.supervisor?.name ?? "—", <Status active={person.active} />,
           ...(admin ? [<div className="row-actions">
             <EditLink base={base} id={person.id} label={person.name} />
@@ -194,7 +200,7 @@ async function Users({ scope, edit, viewerId, profile, employeeId }: {
       db.unit.findMany({ where: { companyId }, orderBy: { name: "asc" } }),
       db.employee.findMany({
         where: { companyId, OR: [{ scope: null }, { scope: { userId: edit } }] },
-        select: { id: true, name: true, unit: { select: { name: true } } }, orderBy: { name: "asc" },
+        select: { id: true, name: true, contractorCompany: true, unit: { select: { name: true } } }, orderBy: { name: "asc" },
       }),
     ]);
     if (edit !== "novo" && !current) notFound();
@@ -253,7 +259,7 @@ async function Users({ scope, edit, viewerId, profile, employeeId }: {
         <div className="access-guide-content">
           <p>Em <strong>Colaboradores</strong>, use <strong>Configurar acesso</strong> na linha da pessoa. Informe o e-mail de login e escolha o perfil.</p>
           <dl>{(["WAREHOUSE", "SUPERVISOR", "MANAGER"] as const).map((role) => <div key={role}>
-            <dt>{roles[role]}</dt><dd>{roleFunctions[role]} {role === "WAREHOUSE" ? "Marque as unidades na edição do acesso."
+            <dt>{roles[role]}</dt><dd>{role === "WAREHOUSE" ? "Marque as unidades na edição do acesso."
               : role === "SUPERVISOR" ? "Selecione a pessoa no campo Encarregado responsável no cadastro de cada membro da equipe." : "Marque as unidades que o gestor acompanha."}</dd>
           </div>)}</dl>
         </div>

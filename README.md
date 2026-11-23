@@ -2,6 +2,8 @@
 
 A aplicação usa Next.js e PostgreSQL. O [protótipo HTML aprovado](prototype/index.html) continua disponível como referência.
 
+Consulte a [documentação do sistema](docs/README.md) para entender os fluxos, as permissões, as regras de estoque, a arquitetura e a publicação no Vercel.
+
 ## Executar localmente
 
 Use Node.js 24 e um banco PostgreSQL vazio. Com Docker Compose, o banco local pode ser iniciado pelo arquivo incluído no projeto.
@@ -27,7 +29,7 @@ Para validar os tipos e compilar, execute `npm.cmd run typecheck` e `npm.cmd run
 | --- | --- |
 | Administrador | Edita a empresa selecionada e administra unidades, colaboradores e acessos. |
 | Gestor | Cadastra colaboradores e opera almoxarifados nas unidades autorizadas. |
-| Encarregado | Cadastra colaboradores na própria equipe, aprova seus pedidos e opera o estoque da unidade. |
+| Encarregado | Cadastra colaboradores na própria equipe, atende pedidos no seu escopo e opera o estoque da unidade. |
 | Almoxarifado | Opera estoque e entregas nas unidades autorizadas. |
 | Colaborador | Consulta o próprio cadastro e a unidade vinculada. |
 
@@ -39,6 +41,8 @@ Todo usuário com um colaborador ativo vinculado tem acesso a **Meus itens** e a
 
 Em **Colaboradores**, um administrador pode abrir **Configurar acesso** para informar o e-mail usado no login, vincular a pessoa e escolher seu perfil. Para **Almoxarifado** e **Gestor**, selecione as unidades autorizadas. Para **Encarregado**, indique a pessoa no campo **Encarregado responsável** do cadastro de cada integrante da equipe.
 
+Para terceiros, informe o empregador em **Empresa terceirizada**, por exemplo, LUK. O cadastro fica na empresa do grupo e na unidade onde a pessoa atua. O administrador também pode atribuir a ela o perfil **Encarregado** e vinculá-la à equipe da mesma unidade.
+
 **Trocar senha** fica no menu da conta. Para recuperar uma senha esquecida, um administrador pode abrir **Acessos e perfis**, editar a conta e usar **Redefinir senha**. A redefinição encerra as sessões da conta e exige a troca da senha temporária no login. Para uma conta vinculada a mais de uma empresa, o administrador precisa administrar todas elas.
 
 ## Entregas e solicitações
@@ -49,11 +53,11 @@ Em **Colaboradores**, um administrador pode abrir **Configurar acesso** para inf
 4. Administrador, Gestor, Encarregado e Almoxarifado podem registrar entregas no seu escopo. O sistema baixa o saldo, registra a entrega e conclui a solicitação em uma única transação. O anexo PDF, PNG ou JPEG de até 3 MB é opcional.
 5. Em **Meus itens**, o colaborador usa **Confirmo que recebi** na seção **Aguardando confirmação**. O item passa para **Itens em uso** e a confirmação aparece no histórico com autor, data e hora.
 
-Use **Não encontrei o item** para descrever o que precisa. O pedido aguarda identificação até que um operador o vincule a um item ativo do catálogo. A regra de aprovação aplicável é consultada nesse momento.
+Use **Não encontrei o item** para descrever o que precisa. Um operador vincula o pedido a um item ativo do catálogo, e o pedido segue para atendimento com a configuração atual.
 
 O fluxo registra a data da entrega e, quando o colaborador confirma, a data do recebimento. O CA é cadastrado nos EPIs. A validade física do lote é preenchida quando aplicável. O PDF ou imagem do comprovante fica no PostgreSQL e pode ser baixado por usuários com acesso à entrega.
 
-Em **Meus itens**, o destinatário pode retirar o item de uso com motivo e justificativa ou solicitar uma troca. A retirada fica no histórico e a troca segue as regras de aprovação da unidade e do item. Na troca, a justificativa pode ser um texto, uma foto em JPG, PNG ou WebP de até 3 MB, ou ambos. O destinatário e quem tem acesso à solicitação podem ver a foto em **Ver detalhes**.
+Em **Meus itens**, o destinatário pode retirar o item de uso com motivo e justificativa ou solicitar uma troca. A retirada fica no histórico e a troca segue o fluxo das solicitações. O pedido de troca aceita texto, foto em JPG, PNG ou WebP de até 3 MB, ou ambos. O destinatário e quem tem acesso à solicitação podem ver a foto em **Ver detalhes**.
 
 ## Alertas e relatórios
 

@@ -49,6 +49,7 @@ model Employee {
   unitId       String
   registration String
   name         String
+  contractorCompany String? @db.VarChar(120)
   department   String
   jobTitle     String
   active       Boolean    @default(true)

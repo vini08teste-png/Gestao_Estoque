@@ -8,14 +8,6 @@ export const roles: Record<Role, string> = {
   EMPLOYEE: "Colaborador",
 };
 
-export const roleFunctions: Record<Role, string> = {
-  ADMIN: "Configura a empresa, os acessos, as unidades e as regras de aprovação.",
-  MANAGER: "Acompanha as unidades autorizadas, cadastra colaboradores e opera o estoque e as entregas dessas unidades.",
-  SUPERVISOR: "Cuida da equipe direta na sua unidade, cadastra colaboradores da equipe, aprova seus pedidos e opera o estoque da unidade. (Não permanecerá na versão final.)",
-  WAREHOUSE: "Registra entradas, controla saldos e atende entregas nos almoxarifados das unidades autorizadas.",
-  EMPLOYEE: "Solicita EPIs e uniformes, acompanha os próprios pedidos e confirma o recebimento.",
-};
-
 export const companyBrands = {
   tsa: { label: "TSA", color: "#a51e22" },
   lynx: { label: "TSA Lynx", color: "#303d82" },

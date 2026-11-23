@@ -364,3 +364,94 @@ test("pedidos vão direto para atendimento e os perfis operacionais veem o saldo
   });
   expect(identified.status).toBe("WAITING_DELIVERY");
 });
+
+test("colaborador terceirizado pode liderar a equipe da unidade onde atua", async ({ page }) => {
+  test.setTimeout(60_000);
+  const companyId = "tsa";
+  const name = `Encarregado terceirizado ${scenario.tag}`;
+  const registration = `EXT-${scenario.tag}`;
+  const email = `encarregado-luk-${scenario.tag}@example.test`;
+  const adminEmail = `admin-luk-${scenario.tag}@example.test`;
+  const password = scenario.supervisor.password;
+  await db.user.create({ data: {
+    email: adminEmail,
+    passwordHash: scenario.supervisor.passwordHash,
+    scopes: { create: { companyId, name: "Administrador de teste", role: "ADMIN", allUnits: true } },
+  } });
+  await signIn(page, { email: adminEmail, password });
+  await page.goto("/tsa/colaboradores?edit=novo");
+  await page.getByLabel("Nome completo").fill(name);
+  await page.getByLabel("Matrícula").fill(registration);
+  await page.getByLabel(/Empresa terceirizada/).fill("LUK");
+  await page.locator('select[name="unit"]').selectOption(scenario.unit.id);
+  await page.getByLabel("Setor").fill("Operação");
+  await page.getByLabel("Função").fill("Encarregado");
+  await page.getByRole("button", { name: "Salvar", exact: true }).click();
+  await expect(page.getByRole("status")).toHaveText("Alterações salvas.");
+  await page.goto("/tsa/colaboradores?q=luk");
+  const contractor = page.getByRole("row").filter({ hasText: name });
+  await expect(contractor.getByRole("cell", { name: "LUK", exact: true })).toBeVisible();
+  await contractor.getByRole("link", { name: /Configurar acesso/ }).click();
+  await expect(page.locator('select[name="employee"] option:checked')).toContainText("LUK");
+  await page.getByLabel(/E-mail usado no login/).fill(email);
+  await page.getByLabel(/Senha temporária/).fill(password);
+  await page.getByLabel(/Perfil de trabalho/).selectOption("SUPERVISOR");
+  await page.getByRole("button", { name: "Salvar", exact: true }).click();
+  await expect(page.getByRole("status")).toHaveText("Alterações salvas.");
+  const worker = await db.employee.findFirstOrThrow({ where: { companyId, name, contractorCompany: "LUK" } });
+  const scope = await db.userScope.findFirstOrThrow({ where: { companyId, user: { email } } });
+  expect(scope).toMatchObject({ role: "SUPERVISOR", employeeId: worker.id });
+
+  await page.goto(`/tsa/colaboradores?edit=${scenario.worker.id}`);
+  const supervisorField = page.locator('select[name="supervisor"]');
+  await expect(supervisorField.locator(`option[value="${worker.id}"]`)).toContainText("LUK");
+  await supervisorField.selectOption(worker.id);
+  await page.getByRole("button", { name: "Salvar", exact: true }).click();
+  await expect(page.getByRole("status")).toHaveText("Alterações salvas.");
+
+  await signOut(page);
+  await page.getByLabel("E-mail").fill(email);
+  await page.getByLabel("Senha", { exact: true }).fill(password);
+  await page.getByRole("button", { name: "Entrar", exact: true }).click();
+  await expect(page).toHaveURL(/\/conta\/senha$/);
+  const newPassword = `Nova-${randomUUID()}`;
+  await page.locator('input[name="currentPassword"]').fill(password);
+  await page.locator('input[name="password"]').fill(newPassword);
+  await page.locator('input[name="confirmation"]').fill(newPassword);
+  await page.getByRole("button", { name: "Salvar nova senha" }).click();
+  await expect(page).toHaveURL(/\/login\?senha=alterada$/);
+  await signIn(page, { email, password: newPassword });
+  await page.goto("/tsa/colaboradores");
+  await expect(page.getByRole("heading", { name: "Minha equipe" })).toBeVisible();
+  await expect(page.locator(".team-member").filter({ hasText: scenario.worker.name })).toBeVisible();
+  await expect(page.getByText(scenario.outside.name, { exact: true })).toHaveCount(0);
+});
+
+test("o rótulo do menu recolhido aparece acima do banner ao usar mouse ou teclado", async ({ page }) => {
+  await page.setViewportSize({ width: 1024, height: 768 });
+  await signIn(page, scenario.manager);
+  await page.getByRole("button", { name: "Recolher menu lateral" }).click();
+  const link = page.locator('.sidebar a[href="/tsa/colaboradores"]');
+  const label = link.locator(".nav-label");
+  const aboveBanner = () => label.evaluate((element: HTMLElement) => {
+    const labelBounds = element.getBoundingClientRect();
+    const bannerBounds = document.querySelector(".hero")!.getBoundingClientRect();
+    const left = Math.max(labelBounds.left, bannerBounds.left);
+    const right = Math.min(labelBounds.right, bannerBounds.right);
+    const top = Math.max(labelBounds.top, bannerBounds.top);
+    const bottom = Math.min(labelBounds.bottom, bannerBounds.bottom);
+    if (right <= left || bottom <= top) return false;
+    element.style.pointerEvents = "auto";
+    try {
+      return document.elementFromPoint((left + right) / 2, (top + bottom) / 2) === element;
+    } finally {
+      element.style.removeProperty("pointer-events");
+    }
+  });
+  await link.hover();
+  await expect.poll(aboveBanner).toBe(true);
+  await page.mouse.move(900, 700);
+  await page.keyboard.press("Tab");
+  await link.focus();
+  await expect.poll(aboveBanner).toBe(true);
+});

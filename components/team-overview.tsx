@@ -9,6 +9,7 @@ type TeamMember = {
   id: string;
   name: string;
   registration: string;
+  contractorCompany: string | null;
   unit: { name: string };
   department: string;
   jobTitle: string;
@@ -56,7 +57,8 @@ export async function TeamOverview({ scope, people, awaitingReceipt }: {
       <summary>
         <Icon name="groups" />
         <span className="team-name"><strong>{person.name}</strong>
-          <small>{person.unit.name} · Matrícula {person.registration}{!person.active && " · Inativo"}</small>
+          <small>{person.unit.name} · Matrícula {person.registration}
+            {person.contractorCompany && ` · Terceirizada: ${person.contractorCompany}`}{!person.active && " · Inativo"}</small>
         </span>
         <span className="team-counts">
           <span><strong>{current.length}</strong> Em uso</span>

@@ -8,7 +8,7 @@ import { db } from "@/lib/db";
 import { employeesWhere } from "@/lib/directory";
 import { hasPersonalEquipment } from "@/lib/equipment-access";
 import { formatDay, inputDay, plusDays, requestLabels, todayInBrazil } from "@/lib/equipment";
-import { roleFunctions, roles } from "@/lib/organization";
+import { roles } from "@/lib/organization";
 import { lowStockLimit, stockAlerts } from "@/lib/stock-availability";
 import {
   alertKind, alertLabels, canViewReports, deadlineStatus, listDeadlines, openRequestStatuses,
@@ -113,9 +113,8 @@ export async function Dashboard({ scope }: { scope: AccessScope }) {
   const historyPath = `${base}/${personal ? "meus-epis" : "entregas"}`;
   const detail = (person: string, quantity: number) => personal ? `Qtd. ${quantity}` : `${person} · Qtd. ${quantity}`;
   return <>
-    <section className="hero dashboard-hero">
-      <div><h1>Visão geral</h1><p>{scope.company.name} · <strong>{roles[scope.role]}</strong></p></div>
-      <p className="dashboard-role">{roleFunctions[scope.role]}</p>
+    <section className="hero">
+      <h1>Visão geral</h1><p>{scope.company.name} · <strong>{roles[scope.role]}</strong></p>
     </section>
     <section aria-labelledby="dashboard-summary">
       <div className="section-row">

@@ -2,10 +2,10 @@
 
 import { useState } from "react";
 import type { Role } from "@/generated/prisma/enums";
-import { roleFunctions, roles } from "@/lib/organization";
+import { roles } from "@/lib/organization";
 
 export function AccessScopeFields({ employees, units, defaults }: {
-  employees: { id: string; name: string; unit: { name: string } }[];
+  employees: { id: string; name: string; contractorCompany: string | null; unit: { name: string } }[];
   units: { id: string; name: string }[];
   defaults: { role: Role; employeeId: string; allUnits: boolean; unitIds: string[] };
 }) {
@@ -18,15 +18,15 @@ export function AccessScopeFields({ employees, units, defaults }: {
   return <>
     <div className="form-grid">
       <label className="field">Perfil de trabalho
-        <select name="role" value={role} onChange={(event) => setRole(event.target.value as Role)} aria-describedby="role-function">
+        <select name="role" value={role} onChange={(event) => setRole(event.target.value as Role)}>
           {Object.entries(roles).map(([id, label]) => <option key={id} value={id}>{label}</option>)}
         </select>
-        <small id="role-function">{roleFunctions[role]}</small>
       </label>
       <label className="field">Colaborador vinculado{needsEmployee ? "" : " (opcional)"}
         <select name="employee" defaultValue={defaults.employeeId} required={needsEmployee}>
           <option value="">{needsEmployee ? "Selecione a pessoa" : "Sem vínculo pessoal"}</option>
-          {employees.map((person) => <option key={person.id} value={person.id}>{person.name} · {person.unit.name}</option>)}
+          {employees.map((person) => <option key={person.id} value={person.id}>
+            {person.name}{person.contractorCompany && ` · ${person.contractorCompany}`} · {person.unit.name}</option>)}
         </select>
         <small>{role === "SUPERVISOR" ? "O cadastro determina a unidade. Monte a equipe selecionando esta pessoa como encarregado no cadastro dos seus colaboradores."
           : role === "EMPLOYEE" ? "Usa a unidade do cadastro para abrir pedidos pessoais."

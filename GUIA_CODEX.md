@@ -3,6 +3,8 @@
 ## 1. Objetivo
 Construir um sistema web interno, simples e responsivo, para gestão de EPIs e uniformes das empresas **TSA** e **TSA Lynx**, pertencentes ao Grupo TSA. O foco é saber quais itens foram entregues, a quem, quais recebimentos aguardam confirmação e quais produtos ou CAs se aproximam do vencimento.
 
+A [documentação do sistema](docs/README.md) detalha o comportamento implementado, os fluxos de uso e a publicação.
+
 ## 2. Princípios
 - Priorizar simplicidade operacional e telas rápidas.
 - Um sistema, duas identidades visuais e dados segregados por empresa.
@@ -23,7 +25,7 @@ Construir um sistema web interno, simples e responsivo, para gestão de EPIs e u
 ## 4. Perfis
 - **Administrador:** usuários, empresas, unidades, almoxarifados, configurações e regras de aprovação.
 - **Gestor:** cadastro de colaboradores, operação de estoque e entregas, e acompanhamento das unidades autorizadas.
-- **Encarregado:** cadastro e consulta da equipe direta, aprovação de suas solicitações e operação de estoque da unidade.
+- **Encarregado:** cadastro e consulta da equipe direta, atendimento de solicitações no seu escopo e operação de estoque da unidade. Pode decidir solicitações da equipe quando a aprovação estiver ativada.
 - **Almoxarifado:** estoque, entradas, entregas e atendimento de solicitações.
 - **Colaborador:** consulta de seus itens, confirmação do recebimento e abertura/acompanhamento de solicitações.
 - O usuário com cadastro de colaborador ativo vinculado também tem acesso à área pessoal.
@@ -32,7 +34,7 @@ Construir um sistema web interno, simples e responsivo, para gestão de EPIs e u
 ## 5. Módulos V1
 1. Login e seleção de empresa quando autorizado.
 2. Dashboard por perfil.
-3. Colaboradores: matrícula, nome, empresa, unidade, setor, função, encarregado e situação.
+3. Colaboradores: matrícula, nome, empresa do grupo, empresa terceirizada quando houver, unidade, setor, função, encarregado e situação.
 4. Cadastro de itens: tipo EPI ou uniforme, nome, fabricante/modelo e observações. Para EPI, CA e sua validade.
 5. Estoque: validade do produto/lote, quantidade por almoxarifado, entradas e baixas.
 6. Histórico de entregas: colaborador, item, lote, quantidade, data, responsável, confirmação do destinatário e anexo opcional.
@@ -43,8 +45,9 @@ Construir um sistema web interno, simples e responsivo, para gestão de EPIs e u
 
 ## 6. Regras de negócio
 - Cada colaborador pertence a uma empresa e unidade; matrícula única no escopo da empresa.
+- A empresa terceirizada identifica o empregador. O colaborador terceirizado pode ser encarregado na unidade em que atua, conforme o perfil de acesso atribuído pelo administrador.
 - Cada almoxarifado pertence a uma unidade.
-- Não permitir estoque negativo; a baixa e a confirmação da entrega devem ocorrer em uma transação atômica.
+- A baixa de estoque e o registro da entrega ocorrem em uma transação atômica que impede estoque negativo. A confirmação de recebimento é feita depois pelo destinatário.
 - Nova entrega de substituição acrescenta um registro ao histórico.
 - O destinatário confirma o recebimento. O sistema registra quem confirmou e quando.
 - CA e validade do produto/lote são campos e alertas distintos. A validade física do lote é preenchida quando aplicável.
@@ -113,7 +116,7 @@ Testes, acessibilidade, segurança, autorização entre empresas, concorrência 
 - Entrega sem estoque disponível é rejeitada sem gravar baixa parcial.
 - Apenas o destinatário confirma o recebimento da própria entrega.
 - Alertas de CA e lote/produto são exibidos separadamente.
-- Solicitações seguem a regra específica da unidade/EPI quando existir.
+- Quando a aprovação está ativada, as solicitações seguem a regra específica da unidade e do item quando existir.
 - Dashboard é utilizável em celular e desktop.
 
 ## 11. Instrução para o Codex — primeiro trabalho

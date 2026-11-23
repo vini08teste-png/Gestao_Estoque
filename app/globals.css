@@ -35,6 +35,7 @@ button:disabled { cursor: wait; opacity: .68; }
 .skip-link:focus { transform: none; }
 .sidebar {
   position: sticky;
+  z-index: 2;
   top: 0;
   height: 100dvh;
   display: flex;
@@ -145,8 +146,7 @@ button:disabled { cursor: wait; opacity: .68; }
 .task-stat-icons > span:first-child { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 8px; background: var(--tint); }
 .task-stat-icons .app-icon { font-size: 18px; }
 .task-stat-icons > .app-icon { transform: rotate(-90deg); }
-.dashboard-hero, .section-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
-.dashboard-hero .dashboard-role { max-width: 410px; margin: 0; font-size: .9375rem; }
+.section-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
 .dashboard-summary-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-top: 14px; align-items: start; }
 .dashboard-summary-panel { min-width: 0; }
 .dashboard-summary-panel h3 { font-size: 1rem; font-weight: 700; }
