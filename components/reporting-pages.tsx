@@ -9,7 +9,7 @@ import { employeesWhere } from "@/lib/directory";
 import { hasPersonalEquipment } from "@/lib/equipment-access";
 import { formatDay, inputDay, plusDays, requestLabels, todayInBrazil } from "@/lib/equipment";
 import { roles } from "@/lib/organization";
-import { lowStockLimit, stockAlerts } from "@/lib/stock-availability";
+import { lowStockLimit, stockAlerts, stockDemand } from "@/lib/stock-availability";
 import {
   alertKind, alertLabels, canViewReports, deadlineStatus, listDeadlines, openRequestStatuses,
   reportFilters, reportKind, reportLabels, reportRows, reportingUnits, unitDeliveryWhere, unitRequestWhere,
@@ -48,9 +48,10 @@ export async function Dashboard({ scope }: { scope: AccessScope }) {
     id: true, quantity: true, deliveredAt: true, receipt: { select: { deliveryId: true } },
     employee: { select: { name: true } }, equipment: { select: { name: true } },
   } as const;
-  const [deadlines, shortages, requests, receipts, deliveries, employees, latest, pendingRequests, pendingReceipts] = await Promise.all([
+  const [deadlines, shortages, demand, requests, receipts, deliveries, employees, latest, pendingRequests, pendingReceipts] = await Promise.all([
     listDeadlines(scope),
     personal ? [] : stockAlerts(scope),
+    personal ? [] : stockDemand(scope),
     db.equipmentRequest.groupBy({ by: ["status"], where: openRequests, _count: true }),
     db.delivery.count({ where: unconfirmed }),
     personal ? 0 : db.delivery.count({ where: { AND: [deliveryScope, { deliveredAt: { gte: plusDays(today, -29), lte: today } }] } }),
@@ -79,6 +80,8 @@ export async function Dashboard({ scope }: { scope: AccessScope }) {
   const team = scope.role === "SUPERVISOR" || scope.role === "MANAGER";
   const approval = scope.company.requestApprovalEnabled;
   const stockCard = ["Itens com estoque baixo ou zerado", shortages.length, `${base}/alertas?tipo=estoque`, "inventory_2"] as const;
+  const demandCard = ["Itens com falta para pedidos", demand.filter(({ missing }) => missing > 0).length,
+    `${base}/alertas?tipo=demanda`, "list_alt"] as const;
   const receiptPath = personal ? `${base}/meus-epis#itens-a-confirmar` :
     team ? `${base}/colaboradores?pendencia=confirmacao` : reportLink("pendencias");
   const cards = personal ? [
@@ -121,7 +124,7 @@ export async function Dashboard({ scope }: { scope: AccessScope }) {
         <h2 id="dashboard-summary">{personal ? "Meu resumo" : "Resumo da operação"}</h2>
         {!personal && <Link className="text-action" href={`${base}/relatorios`}>Abrir relatórios</Link>}
       </div>
-      <div className={`stats task-stats ${personal ? "personal-alerts" : ""}`}>{cards.map(([label, value, href, icon]) => <Link className="stat task-stat" key={label} href={href}>
+      <div className={`stats task-stats ${personal ? "personal-alerts" : ""}`}>{[...cards, ...(!personal ? [demandCard] : [])].map(([label, value, href, icon]) => <Link className="stat task-stat" key={label} href={href}>
         <span className="task-stat-icons"><span><Icon name={icon} /></span><Icon name="expand_more" /></span>
         <strong className="metric-value">{value}</strong><span className="metric-label">{label}</span>
       </Link>)}</div>
@@ -193,26 +196,46 @@ export async function Alerts({ scope, query }: { scope: AccessScope; query: Quer
   const { unit, error } = reportFilters({ unidade: query.unidade }, units);
   const kind = alertKind(query);
   const stockOnly = query.tipo === "estoque";
+  const demandOnly = query.tipo === "demanda";
+  const operationsOnly = stockOnly || demandOnly;
   const today = todayInBrazil();
   const thresholds = scope.company.alertDays;
-  const [rows, shortages] = await Promise.all([
-    error || stockOnly ? [] : listDeadlines(scope, { unit }),
-    error || kind ? [] : stockAlerts(scope, unit),
+  const [rows, shortages, demand] = await Promise.all([
+    error || operationsOnly ? [] : listDeadlines(scope, { unit }),
+    error || kind || demandOnly ? [] : stockAlerts(scope, unit),
+    error || kind || stockOnly ? [] : stockDemand(scope, unit),
   ]);
-  const types = (stockOnly ? [] : kind ? [kind] : Object.keys(alertLabels)) as AlertKind[];
+  const types = (operationsOnly ? [] : kind ? [kind] : Object.keys(alertLabels)) as AlertKind[];
   return <>
-    <header className="page-heading"><div><h1>{stockOnly ? "Alertas de estoque" : "Alertas"}</h1>
-      <p>{stockOnly ? "Consulte os itens com saldo baixo ou zerado na sua unidade." : `${scope.company.name} · Estoque e validades`}</p></div>
-      {!stockOnly && <Link className="button" href={`/${scope.companyId}/relatorios` + params({ tipo: "vencimentos", unidade: unit })}>Relatório de vencimentos</Link>}
+    <header className="page-heading"><div><h1>{demandOnly ? "Demanda e estoque" : stockOnly ? "Alertas de estoque" : "Alertas"}</h1>
+      <p>{demandOnly ? "Veja quanto estoque falta para atender os pedidos da fila." :
+        stockOnly ? "Consulte os itens com saldo baixo ou zerado na sua unidade." : `${scope.company.name} · Estoque e validades`}</p></div>
+      {!operationsOnly && <Link className="button" href={`/${scope.companyId}/relatorios` + params({ tipo: "vencimentos", unidade: unit })}>Relatório de vencimentos</Link>}
     </header>
     <form action={root} className="filters">
-      {(kind || stockOnly) && <input type="hidden" name="tipo" value={stockOnly ? "estoque" : kind} />}
+      {(kind || operationsOnly) && <input type="hidden" name="tipo" value={demandOnly ? "demanda" : stockOnly ? "estoque" : kind} />}
       <UnitSelect units={units} selected={unit} />
       <button className="button" type="submit">Filtrar</button>
-      {(kind || stockOnly) && <Link className="button" href={root + params({ unidade: unit })}>Ver todos os alertas</Link>}
+      {(kind || operationsOnly) && <Link className="button" href={root + params({ unidade: unit })}>Ver todos os alertas</Link>}
     </form>
     {error ? <p className="feedback error" role="alert">{error}</p> : <>
-      {!kind && <section aria-labelledby="low-stock-heading">
+      {!kind && !stockOnly && <section aria-labelledby="stock-demand-heading">
+        <div className="section-row"><div>
+          <h2 id="stock-demand-heading">Saldo para pedidos em aberto</h2>
+          <p>Compara pedidos aguardando entrega com o saldo elegível por item e unidade.</p>
+        </div><Link className="text-action" href={`/${scope.companyId}/solicitacoes?status=WAITING_DELIVERY`}>Abrir fila de pedidos</Link></div>
+        <div className="panel">
+          {demand.length ? <ul className="dashboard-summary-list">
+            {demand.map((row) => <li key={row.id}><div>
+              <span><strong>{row.equipment}</strong><small>{row.unit} · {row.requested} pedidas · {row.available} disponíveis</small></span>
+              <span className={`badge ${row.missing ? "deadline-danger" : "active"}`}>
+                {row.missing ? `Faltam ${row.missing} un.` : "Saldo total suficiente"}
+              </span>
+            </div></li>)}
+          </ul> : <p className="empty">Nenhum pedido com item identificado aguarda entrega neste escopo.</p>}
+        </div>
+      </section>}
+      {!kind && !demandOnly && <section aria-labelledby="low-stock-heading">
         <div className="section-row"><div>
           <h2 id="low-stock-heading">Estoque baixo ou zerado</h2>
           <p>Até {lowStockLimit} unidades disponíveis por item e unidade. Confira se é preciso repor ou comprar.</p>
@@ -228,7 +251,7 @@ export async function Alerts({ scope, query }: { scope: AccessScope; query: Quer
           </ul> : <p className="empty">Nenhum item com saldo baixo ou zerado no estoque cadastrado.</p>}
         </div>
       </section>}
-      {!stockOnly && <><h2 className="section-title">Alertas de validade</h2><AlertCards rows={rows} root={root} selectedUnit={unit} /></>}
+      {!operationsOnly && <><h2 className="section-title">Alertas de validade</h2><AlertCards rows={rows} root={root} selectedUnit={unit} /></>}
       {types.map((type) => {
         const list = rows.filter((row) => row.kind === type);
         return <section key={type} className="deadline-section" aria-label={alertLabels[type]}>
@@ -251,7 +274,7 @@ export async function Alerts({ scope, query }: { scope: AccessScope; query: Quer
         </section>;
       })}
     </>}
-    {!stockOnly && canAdminister(scope) && <details className="panel editor deadline-settings">
+    {!operationsOnly && canAdminister(scope) && <details className="panel editor deadline-settings">
       <summary>Configurar prazos de alerta</summary>
       <ActionForm action={saveAlertDays.bind(null, scope.companyId)}>
         <p>Escolha três prazos em dias, em ordem crescente, para os alertas de validade do CA e de lotes.</p>

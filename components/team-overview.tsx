@@ -2,7 +2,7 @@ import { Icon } from "@/components/icon";
 import type { AccessScope } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { operationalDeliveryWhere, requestWhere } from "@/lib/equipment-access";
-import { latestByItem, requestLabels } from "@/lib/equipment";
+import { jobTitleKey, latestByItem, requestLabels } from "@/lib/equipment";
 import { openRequestStatuses } from "@/lib/reporting";
 
 type TeamMember = {
@@ -10,6 +10,7 @@ type TeamMember = {
   name: string;
   registration: string;
   contractorCompany: string | null;
+  unitId: string;
   unit: { name: string };
   department: string;
   jobTitle: string;
@@ -23,7 +24,7 @@ export async function TeamOverview({ scope, people, awaitingReceipt }: {
   awaitingReceipt: boolean;
 }) {
   const employeeId = { in: people.map(({ id }) => id) };
-  const [deliveries, requests] = await Promise.all([
+  const [deliveries, requests, expected] = await Promise.all([
     db.delivery.findMany({
       where: { ...operationalDeliveryWhere(scope), employeeId },
       select: {
@@ -42,6 +43,12 @@ export async function TeamOverview({ scope, people, awaitingReceipt }: {
       },
       orderBy: [{ openedAt: "desc" }, { id: "desc" }],
     }),
+    db.expectedItem.findMany({
+      where: { companyId: scope.companyId, equipment: { active: true },
+        OR: [{ unitId: null }, { unitId: { in: [...new Set(people.map(({ unitId }) => unitId))] } }] },
+      select: { unitId: true, jobTitle: true, equipmentId: true, quantity: true, equipment: { select: { name: true } } },
+      orderBy: { equipment: { name: "asc" } },
+    }),
   ]);
   const deliveriesByPerson = Map.groupBy(deliveries, ({ employeeId }) => employeeId);
   const requestsByPerson = Map.groupBy(requests, ({ employeeId }) => employeeId);
@@ -50,9 +57,25 @@ export async function TeamOverview({ scope, people, awaitingReceipt }: {
     const current = latestByItem(delivered.filter(({ receipt }) => receipt)).filter(({ retirement }) => !retirement);
     const pending = delivered.filter(({ receipt, retirement }) => !receipt && !retirement);
     const open = requestsByPerson.get(person.id) ?? [];
-    return { person, current, pending, open };
+    const byItem = new Map<string, (typeof expected)[number]>();
+    if (person.active) {
+      const job = jobTitleKey(person.jobTitle);
+      for (const rule of expected) {
+        if ((rule.unitId && rule.unitId !== person.unitId) || (rule.jobTitle && rule.jobTitle !== job)) continue;
+        if (rule.quantity > (byItem.get(rule.equipmentId)?.quantity ?? 0)) byItem.set(rule.equipmentId, rule);
+      }
+    }
+    const inUse = new Map(current.map((row) => [row.equipmentId, row.quantity]));
+    const toConfirm = new Map(latestByItem(pending).map((row) => [row.equipmentId, row.quantity]));
+    const checklist = [...byItem.values()].map((rule) => {
+      const confirmed = inUse.get(rule.equipmentId) ?? 0;
+      const waiting = toConfirm.get(rule.equipmentId) ?? 0;
+      const missing = Math.max(0, rule.quantity - Math.max(confirmed, waiting));
+      return { ...rule, missing, waiting, confirmed };
+    });
+    return { person, current, pending, open, checklist };
   }).filter(({ pending }) => !awaitingReceipt || pending.length);
-  return members.length ? <div className="team-list">{members.map(({ person, current, pending, open }) => (
+  return members.length ? <div className="team-list">{members.map(({ person, current, pending, open, checklist }) => (
     <details className="panel team-member" key={person.id}>
       <summary>
         <Icon name="groups" />
@@ -64,6 +87,9 @@ export async function TeamOverview({ scope, people, awaitingReceipt }: {
           <span><strong>{current.length}</strong> Em uso</span>
           <span className={pending.length ? "team-count-pending" : undefined}><strong>{pending.length}</strong> A confirmar</span>
           <span><strong>{open.length}</strong> Em aberto</span>
+          {checklist.some(({ missing }) => missing) && <span className="team-count-pending">
+            <strong>{checklist.filter(({ missing }) => missing).length}</strong> Itens em falta
+          </span>}
         </span>
         <Icon name="expand_more" />
       </summary>
@@ -79,6 +105,13 @@ export async function TeamOverview({ scope, people, awaitingReceipt }: {
           <ul>{open.map((item) => <li key={item.id}>{item.equipment?.name ?? item.requestedItem}
             <small> · Qtd. {item.quantity} · {requestLabels[item.status]}</small></li>)}</ul> :
           <p>Nenhum pedido em aberto.</p>}</section>
+        {person.active && <section><h2>Itens esperados</h2>{checklist.length ?
+          <ul>{checklist.map((item) => <li key={item.equipmentId}>
+            <strong>{item.equipment.name}</strong> <small>· Esperado {item.quantity} un.</small>
+            <br /><span className={`badge ${item.missing ? "deadline-danger" : item.confirmed >= item.quantity ? "active" : "deadline-warning"}`}>
+              {item.missing ? `Faltam ${item.missing} un.` : item.confirmed >= item.quantity ? "Recebido" : "A confirmar"}
+            </span>
+          </li>)}</ul> : <p>Nenhum item esperado para esta função ou unidade.</p>}</section>}
       </div>
     </details>))}</div> : <div className="panel"><p className="empty">{awaitingReceipt ?
       "Ninguém nesta lista está aguardando confirmação." : "Nenhum colaborador encontrado."}</p></div>;

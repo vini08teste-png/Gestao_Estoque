@@ -10,7 +10,7 @@ import { attachmentLimit, replacementPhotoTypes } from "@/lib/attachment-limits"
 import { db } from "@/lib/db";
 import { employeesWhere, unitsWhere } from "@/lib/directory";
 import { handlesStock, hasPersonalEquipment, ownEmployeeId, requestWhere } from "@/lib/equipment-access";
-import { brazilDay, retirementLabels, todayInBrazil } from "@/lib/equipment";
+import { brazilDay, jobTitleKey, retirementLabels, todayInBrazil } from "@/lib/equipment";
 import { text, type FormResult } from "@/lib/forms";
 
 class InputError extends Error {}
@@ -131,6 +131,32 @@ export async function addStock(companyId: string, _: FormResult, data: FormData)
       where: { companyId_warehouseId_lotId: key }, create: { ...key, quantity }, update: { quantity: { increment: quantity } },
     });
     await tx.stockMovement.create({ data: { ...key, actorId, delta: quantity } });
+  });
+}
+
+export async function saveExpectedItem(companyId: string, _: FormResult, data: FormData) {
+  return mutate(companyId, canAdminister, async (tx) => {
+    const unitId = field(data, "unit", "Unidade", 120, true) || null;
+    const jobTitle = jobTitleKey(field(data, "jobTitle", "Função", 120, true));
+    const equipmentId = field(data, "equipment", "Item");
+    const quantity = count(data);
+    if (!unitId && !jobTitle) return invalid("Informe uma unidade ou função.");
+    if (unitId && !await tx.unit.findUnique({ where: { companyId_id: { companyId, id: unitId }, active: true } })) {
+      return invalid("Selecione uma unidade ativa desta empresa.");
+    }
+    if (!await tx.equipment.findUnique({ where: { companyId_id: { companyId, id: equipmentId }, active: true } })) {
+      return invalid("Selecione um item ativo desta empresa.");
+    }
+    const target = { companyId, unitId, jobTitle, equipmentId };
+    const existing = await tx.expectedItem.findFirst({ where: target, select: { id: true } });
+    if (existing) await tx.expectedItem.update({ where: { companyId_id: { companyId, id: existing.id } }, data: { quantity } });
+    else await tx.expectedItem.create({ data: { ...target, quantity } });
+  });
+}
+
+export async function removeExpectedItem(companyId: string, id: string, _: FormResult, _data: FormData) {
+  return mutate(companyId, canAdminister, async (tx) => {
+    await tx.expectedItem.deleteMany({ where: { companyId, id } });
   });
 }
 

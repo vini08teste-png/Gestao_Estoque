@@ -38,3 +38,4 @@ export function plusDays(date: Date, days: number) {
   result.setUTCDate(result.getUTCDate() + days);
   return result;
 }
+export const jobTitleKey = (value: string) => value.trim().normalize("NFC").toLocaleLowerCase("pt-BR").replace(/\s+/g, " ");

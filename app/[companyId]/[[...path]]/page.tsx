@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import { resetUserPassword, saveCompany, saveEmployee, saveUnit, saveUser } from "@/app/organization-actions";
 import { AccessScopeFields } from "@/components/access-scope-fields";
 import { ActionForm } from "@/components/action-form";
-import { Catalog, Deliveries, Inventory, Requests, Rules } from "@/components/equipment-pages";
+import { Catalog, Deliveries, ExpectedItems, Inventory, Requests, Rules } from "@/components/equipment-pages";
 import { Alerts, Dashboard, Reports } from "@/components/reporting-pages";
 import { TeamOverview } from "@/components/team-overview";
 import { sections, Workspace, type Section } from "@/components/workspace";
@@ -318,13 +318,15 @@ export default async function CompanyPage({ params, searchParams }: {
     estoque: <Inventory scope={scope} operation={typeof search.acao === "string" ? search.acao : ""} />,
     entregas: <Deliveries scope={scope} create={edit === "novo"} requestId={typeof search.solicitacao === "string" ? search.solicitacao : ""}
       registered={search.registrada === "1"} />,
-    solicitacoes: <Requests scope={scope} edit={edit} status={typeof search.status === "string" ? search.status : ""} sent={search.enviada === "1"} />,
+    solicitacoes: <Requests scope={scope} edit={edit} status={typeof search.status === "string" ? search.status : ""}
+      queue={typeof search.fila === "string" ? search.fila : ""} sent={search.enviada === "1"} />,
     "meus-epis": <Deliveries scope={scope} create={false} requestId="" registered={false} personal retired={search.retirado === "1"} />,
     "minhas-solicitacoes": <Requests scope={scope} edit={edit} status={typeof search.status === "string" ? search.status : ""}
       sent={search.enviada === "1"} personal />,
     alertas: <Alerts scope={scope} query={search} />,
     relatorios: <Reports scope={scope} query={search} />,
     "regras-aprovacao": <Rules scope={scope} />,
+    "itens-esperados": <ExpectedItems scope={scope} />,
   };
   return <Workspace scope={scope} companies={companies} section={section}>{content[section]}</Workspace>;
 }

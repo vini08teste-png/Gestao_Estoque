@@ -24,7 +24,7 @@ A disponibilidade é consultada quando a tela carrega. O estoque só é baixado 
 
 ## Registrar a entrega
 
-- Para atender um pedido, use **Solicitações → Ver detalhes → Atender solicitação**. O sistema preenche o destinatário, o item e a quantidade do pedido.
+- Para atender um pedido, use **Solicitações → Pronto para entregar → Atender pedido**. O sistema preenche o destinatário, o item, a quantidade e a data sugerida. Se houver um único lote apto, ele já vem selecionado.
 - Para entregar diretamente, abra **Histórico → Nova entrega**, selecione o colaborador e informe a quantidade.
 - Selecione **Almoxarifado e lote** dentro da unidade do colaborador e preencha a data. A data pode ser de hoje ou anterior. Para uma entrega vinculada a um pedido, ela também precisa ser igual ou posterior à abertura do pedido.
 - Se houver comprovante, anexe PDF, PNG ou JPG de até **3 MB**. O anexo é opcional.

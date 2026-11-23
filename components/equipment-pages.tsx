@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
 import {
   addStock, confirmReceipt, decideRequest, identifyItem, openRequest, registerDelivery, requestReplacement, retireDelivery,
-  saveEquipment, saveLot, saveRule, saveWarehouse, setLotBlocked,
+  removeExpectedItem, saveEquipment, saveExpectedItem, saveLot, saveRule, saveWarehouse, setLotBlocked,
 } from "@/app/equipment-actions";
 import { ActionForm } from "@/components/action-form";
 import { DeliveryFields } from "@/components/delivery-fields";
@@ -154,6 +154,38 @@ export async function Inventory({ scope, operation }: { scope: AccessScope; oper
   </>;
 }
 
+export async function ExpectedItems({ scope }: { scope: AccessScope }) {
+  if (!canAdminister(scope)) notFound();
+  const { companyId } = scope;
+  const [rules, units, equipment, functions] = await Promise.all([
+    db.expectedItem.findMany({ where: { companyId }, include: { unit: true, equipment: true },
+      orderBy: [{ unit: { name: "asc" } }, { jobTitle: "asc" }, { equipment: { name: "asc" } }] }),
+    db.unit.findMany({ where: { companyId, active: true }, orderBy: { name: "asc" } }),
+    db.equipment.findMany({ where: { companyId, active: true }, orderBy: { name: "asc" } }),
+    db.employee.findMany({ where: { companyId, active: true }, distinct: ["jobTitle"], select: { jobTitle: true }, orderBy: { jobTitle: "asc" } }),
+  ]);
+  return <>
+    <Heading title="Itens esperados" note="Defina o que cada unidade ou função deve receber. A lista aparece no acompanhamento da equipe." />
+    <Editor title="Definir item esperado">
+      <ActionForm action={saveExpectedItem.bind(null, companyId)} label="Salvar item esperado">
+        <p>Selecione uma unidade, informe uma função ou combine os dois campos para limitar a lista.</p>
+        <div className="form-grid">
+          <Choose label="Unidade" name="unit" values={units} optional empty="Todas as unidades" />
+          <label className="field">Função<input name="jobTitle" list="funcoes-equipe" maxLength={120} placeholder="Todas as funções" />
+            <datalist id="funcoes-equipe">{functions.map(({ jobTitle }) => <option value={jobTitle} key={jobTitle} />)}</datalist>
+          </label>
+          <Choose label="Item" name="equipment" values={equipment} />
+          <label className="field">Quantidade<input name="quantity" type="number" min={1} max={1_000_000} defaultValue={1} required /></label>
+        </div>
+      </ActionForm>
+    </Editor>
+    <h2 className="section-title">Itens configurados</h2>
+    <Records cardsOnMobile columns={["Item", "Unidade", "Função", "Quantidade", "Ação"]}
+      rows={rules.map((row) => [row.id, row.equipment.name, row.unit?.name ?? "Todas", row.jobTitle || "Todas", row.quantity,
+        <ActionForm action={removeExpectedItem.bind(null, companyId, row.id)} label="Remover da lista" />])} />
+  </>;
+}
+
 export async function Rules({ scope }: { scope: AccessScope }) {
   if (!canAdminister(scope)) notFound();
   const { companyId } = scope;
@@ -178,8 +210,26 @@ export async function Rules({ scope }: { scope: AccessScope }) {
   </>;
 }
 
-export async function Requests({ scope, edit, status, sent, personal = false }: {
-  scope: AccessScope; edit: string; status: string; sent: boolean; personal?: boolean;
+const queueLabels = { prontos: "Pronto para entregar", "falta-estoque": "Falta estoque", identificar: "Item a identificar" };
+type QueueKey = keyof typeof queueLabels;
+
+function RequestProgress({ status, available, delivered, received }: {
+  status: RequestStatus; available: boolean | undefined; delivered?: Date; received?: Date;
+}) {
+  if (status === "CANCELLED" || status === "REJECTED") return <p className="request-availability">Pedido enviado · {requestLabels[status]}</p>;
+  const pending = status === "WAITING_CATALOG" ? "Item a identificar" : status === "PENDING_APPROVAL" ? "Aguardando aprovação" :
+    available === false ? "Aguardando estoque" : "Aguardando entrega";
+  const stage = received ? 3 : delivered ? 2 : 1;
+  const steps = ["Pedido enviado", delivered ? "Em atendimento" : pending,
+    delivered ? `Entregue em ${formatDay(delivered)}` : "Entregue", received ? "Recebimento confirmado" : "Confirmação de recebimento"];
+  return <ol className="request-progress" aria-label="Acompanhamento do pedido">
+    {steps.map((step, index) => <li key={index} aria-current={index === stage ? "step" : undefined}
+      className={index < stage ? "progress-done" : undefined}>{step}</li>)}
+  </ol>;
+}
+
+export async function Requests({ scope, edit, status, sent, queue = "", personal = false }: {
+  scope: AccessScope; edit: string; status: string; sent: boolean; queue?: string; personal?: boolean;
 }) {
   const { companyId } = scope;
   const own = personal || scope.role === "EMPLOYEE";
@@ -206,32 +256,55 @@ export async function Requests({ scope, edit, status, sent, personal = false }: 
     where: { ...(own ? { companyId, employeeId: ownEmployeeId(scope) } : requestWhere(scope)),
       ...(status === "aberto" ? { status: { in: [...openRequestStatuses()] } } :
         Object.hasOwn(requestLabels, status) ? { status: status as RequestStatus } : {}) },
-    include: { equipment: true, employee: true, unit: true, photo: { select: { requestId: true } } },
+    include: { equipment: true, employee: true, unit: true, photo: { select: { requestId: true } },
+      delivery: { select: { id: true, deliveredAt: true, receipt: { select: { confirmedAt: true } }, retirement: { select: { deliveryId: true } } } } },
     orderBy: { openedAt: "desc" },
   });
   const catalog = !own && handlesStock(scope) && list.some((row) => row.status === "WAITING_CATALOG") ?
     await db.equipment.findMany({ where: { companyId, active: true }, select: { id: true, name: true }, orderBy: { name: "asc" } }) : [];
-  const awaitingDelivery = own ? [] : list.filter((row) => row.status === "WAITING_DELIVERY" && row.equipmentId);
+  const awaitingDelivery = list.filter((row) => row.status === "WAITING_DELIVERY" && row.equipmentId &&
+    (!own || row.unitId === scope.employee?.unitId));
   const balances = awaitingDelivery.length ? await stockBalances(scope,
     [...new Set(awaitingDelivery.map((row) => row.unitId))],
-    [...new Set(awaitingDelivery.flatMap((row) => row.equipmentId ? [row.equipmentId] : []))]) : new Map();
+    [...new Set(awaitingDelivery.flatMap((row) => row.equipmentId ? [row.equipmentId] : []))], own) : new Map();
+  const selectedQueue = !own && Object.hasOwn(queueLabels, queue) ? queue as QueueKey : "";
+  const cards = list.map((row) => {
+    const availability = row.status === "WAITING_DELIVERY" && row.equipmentId && (!own || row.unitId === scope.employee?.unitId) ?
+      requestAvailability(balances.get(stockKey(row.unitId, row.equipmentId)), row.quantity) : null;
+    const category: QueueKey | null = row.status === "WAITING_CATALOG" ? "identificar" :
+      availability ? (availability.ready ? "prontos" : "falta-estoque") : null;
+    return { row, availability, category };
+  });
+  const results = selectedQueue ? cards.filter(({ category }) => category === selectedQueue) : cards;
+  const queuePath = (category: string) => {
+    const params = new URLSearchParams();
+    if (status) params.set("status", status);
+    if (category) params.set("fila", category);
+    return params.size ? `${root}?${params}` : root;
+  };
   return <>
     <Heading title="Solicitações"
-      note={own ? "Acompanhe seus pedidos de EPIs e uniformes." : "Acompanhe e resolva os pedidos no seu escopo."}
+      note={own ? "Acompanhe seus pedidos de EPIs e uniformes." : "Veja quais pedidos podem ser entregues, precisam de estoque ou precisam ser identificados."}
       action={own && <Link className="button primary" href={`${root}?edit=novo`}>Solicitar item</Link>} />
     {tabs}
+    {!own && <nav className="queue-tabs" aria-label="Prioridades da fila">
+      <Link className="button" href={queuePath("")} aria-current={!selectedQueue ? "page" : undefined}>Todos</Link>
+      {(Object.entries(queueLabels) as [QueueKey, string][]).map(([key, label]) =>
+        <Link key={key} className="button" href={queuePath(key)} aria-current={selectedQueue === key ? "page" : undefined}>
+          {label} <span className="badge">{cards.filter(({ category }) => category === key).length}</span>
+        </Link>)}
+    </nav>}
     {own && sent && <p className="feedback success operation-feedback" role="status">Solicitação enviada.</p>}
     <form action={root} className="filters">
+      {selectedQueue && <input type="hidden" name="fila" value={selectedQueue} />}
       <label className="field">Situação<select name="status" defaultValue={status === "aberto" || Object.hasOwn(requestLabels, status) ? status : ""}>
         <option value="">Todas</option><option value="aberto">Em aberto</option>
         {Object.entries(requestLabels).map(([value, label]) => <option value={value} key={value}>{label}</option>)}
       </select></label>
       <button className="button" type="submit">Filtrar</button>
     </form>
-    {list.length ? <div className="request-list">{list.map((row) => {
+    {results.length ? <div className="request-list">{results.map(({ row, availability, category }) => {
       const photoUrl = row.photo && `/fotos-de-troca/${companyId}/${row.id}`;
-      const availability = !own && row.status === "WAITING_DELIVERY" && row.equipmentId ?
-        requestAvailability(balances.get(stockKey(row.unitId, row.equipmentId)), row.quantity) : null;
       return (
       <article className="panel request-card" key={row.id}>
         <div className="request-card-main">
@@ -239,12 +312,19 @@ export async function Requests({ scope, edit, status, sent, personal = false }: 
           <div><h2>{row.equipment?.name ?? row.requestedItem}</h2>
             <p>{!own && `${row.employee.name} · ${row.unit.name} · `}Qtd. {row.quantity} · {formatDay(brazilDay(row.openedAt))}</p>
           </div>
-          <span className={`badge ${row.status === "COMPLETED" ? "active" : ""}`}>{requestLabels[row.status]}</span>
+          <span className={`badge ${row.status === "COMPLETED" || (!own && category === "prontos") ? "active" :
+            !own && category === "falta-estoque" ? "deadline-warning" : ""}`}>{!own && category ? queueLabels[category] : requestLabels[row.status]}</span>
         </div>
-        {availability && <p className="request-availability">
+        {own && <RequestProgress status={row.status} available={availability?.ready}
+          delivered={row.delivery?.deliveredAt} received={row.delivery?.receipt?.confirmedAt} />}
+        {own && row.delivery && !row.delivery.receipt && <Link className="button primary request-action"
+          href={`/${companyId}/meus-epis${row.delivery.retirement ? "" : "#entrega-" + row.delivery.id}`}>Ir para confirmação</Link>}
+        {!own && availability && <p className="request-availability">
           <span className={`badge ${availability.tone}`}>{availability.label}</span>
           <span>{availability.detail}</span>
         </p>}
+        {!own && availability?.ready && handlesStock(scope) &&
+          <Link className="button primary request-action" href={`/${companyId}/entregas?solicitacao=${row.id}`}>Atender pedido</Link>}
         <details className="record-details"><summary>Ver detalhes</summary>
           {row.replacementForId && <p><strong>Solicitação de troca</strong></p>}
           {row.reason && <p>{row.reason}</p>}
@@ -266,9 +346,8 @@ export async function Requests({ scope, edit, status, sent, personal = false }: 
               <label className="field">Justificativa<textarea name="note" required maxLength={500} rows={2} /></label>
             </ActionForm>
           </>}
-          {availability && handlesStock(scope) && (availability.ready ?
-            <Link className="button primary" href={`/${companyId}/entregas?solicitacao=${row.id}`}>Atender solicitação</Link> :
-            <Link className="text-action" href={`/${companyId}/estoque`}>Consultar estoque</Link>)}
+          {!own && availability && !availability.ready && handlesStock(scope) &&
+            <Link className="text-action" href={`/${companyId}/estoque`}>Consultar estoque</Link>}
           {(own || canAdminister(scope)) && ["WAITING_CATALOG", "PENDING_APPROVAL", "WAITING_DELIVERY"].includes(row.status) &&
             <ActionForm action={decideRequest.bind(null, companyId, row.id, "cancel")} label="Cancelar solicitação" />}
         </details>
@@ -307,7 +386,7 @@ export async function Deliveries({ scope, create, requestId, registered, persona
       }),
     ]);
     return <>
-      <Heading title={request ? "Atender solicitação" : "Nova entrega"} action={<Link className="button" href={request ? `/${companyId}/solicitacoes` : root}>Voltar</Link>} />
+      <Heading title={request ? "Atender pedido" : "Nova entrega"} action={<Link className="button" href={request ? `/${companyId}/solicitacoes?fila=prontos` : root}>Voltar</Link>} />
       {stocks.length && (request || people.length) ? <Editor title="Dados da entrega">
         <ActionForm action={registerDelivery.bind(null, companyId, randomUUID(), requestId || null)} label="Confirmar entrega">
           <DeliveryFields people={people} today={inputDay(today)} request={request ? {
@@ -360,7 +439,7 @@ export async function Deliveries({ scope, create, requestId, registered, persona
     <span className="badge active">Confirmado em {receiptDate.format(row.receipt.confirmedAt)}</span> :
     canConfirm ? <ActionForm action={confirmReceipt.bind(null, companyId, row.id)} label="Confirmo que recebi" /> : "Aguardando confirmação";
   const itemCard = (row: (typeof rows)[number], allowActions: boolean) =>
-    <article className={`panel personal-equipment-card${row.receipt ? "" : " awaiting-receipt"}`} key={row.id}>
+    <article className={`panel personal-equipment-card${row.receipt ? "" : " awaiting-receipt"}`} key={row.id} id={`entrega-${row.id}`}>
       <h3>{row.equipment.name}</h3>
       <dl>
         <div><dt>Quantidade</dt><dd>{row.quantity}</dd></div>

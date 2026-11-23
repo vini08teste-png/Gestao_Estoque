@@ -6,6 +6,12 @@ O painel apresenta atalhos e indicadores de acordo com o perfil. Quem opera o es
 
 Em **Equipe** ou **Minha equipe**, abra a pessoa para ver itens em uso, entregas aguardando confirmação e pedidos em aberto. Use o filtro **Recebimento** para encontrar colaboradores que ainda precisam confirmar.
 
+Em **Itens esperados**, o administrador escolhe o item e a quantidade por função, por unidade ou pela combinação dos dois. Quando várias regras se aplicam à mesma pessoa e ao mesmo item, vale a maior quantidade. Na equipe, o gestor e o encarregado veem **Recebido**, **A confirmar** ou quantas unidades faltam. A comparação usa a entrega mais recente em uso e a entrega pendente mais recente, sem somar as duas como se fossem uma única entrega.
+
+## Demanda e estoque
+
+O cartão **Itens com falta para pedidos** abre o resumo **Demanda e estoque**. Para cada item e unidade, o sistema soma os pedidos identificados aguardando entrega no escopo do perfil e compara com o saldo elegível. Por exemplo, cinco camisetas pedidas e três disponíveis resultam em duas em falta. Para o encarregado, entram somente os pedidos da equipe. A fila continua conferindo se existe um único lote apto para atender cada pedido individualmente.
+
 ## Alertas
 
 | Tipo | Como interpretar |
