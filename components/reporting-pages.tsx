@@ -9,7 +9,7 @@ import { employeesWhere } from "@/lib/directory";
 import { hasPersonalEquipment } from "@/lib/equipment-access";
 import { formatDay, inputDay, plusDays, requestLabels, todayInBrazil } from "@/lib/equipment";
 import { roles } from "@/lib/organization";
-import { lowStockLimit, stockAlerts, stockDemand } from "@/lib/stock-availability";
+import { defaultStockMinimum, stockAlerts, stockDemand } from "@/lib/stock-availability";
 import {
   alertKind, alertLabels, canViewReports, deadlineStatus, listDeadlines, openRequestStatuses,
   reportFilters, reportKind, reportLabels, reportRows, reportingUnits, unitDeliveryWhere, unitRequestWhere,
@@ -238,12 +238,12 @@ export async function Alerts({ scope, query }: { scope: AccessScope; query: Quer
       {!kind && !demandOnly && <section aria-labelledby="low-stock-heading">
         <div className="section-row"><div>
           <h2 id="low-stock-heading">Estoque baixo ou zerado</h2>
-          <p>Até {lowStockLimit} unidades disponíveis por item e unidade. Confira se é preciso repor ou comprar.</p>
+          <p>O alerta usa o mínimo configurado por item e unidade. Para os demais itens, o limite padrão é de {defaultStockMinimum} unidades.</p>
         </div><Link className="text-action" href={`/${scope.companyId}/estoque`}>Consultar estoque</Link></div>
         <div className="panel">
           {shortages.length ? <ul className="dashboard-summary-list">
             {shortages.map(([id, row]) => <li key={id}><div>
-              <span><strong>{row.equipment}</strong><small>{row.unit}</small></span>
+              <span><strong>{row.equipment}</strong><small>{row.unit} · Mínimo {row.minimum} un.</small></span>
               <span className={`badge ${row.quantity ? "deadline-warning" : "deadline-danger"}`}>
                 {row.quantity ? `Saldo baixo · ${row.quantity} un.` : "Sem saldo disponível"}
               </span>

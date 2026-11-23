@@ -16,11 +16,11 @@ O cartão **Itens com falta para pedidos** abre o resumo **Demanda e estoque**. 
 
 | Tipo | Como interpretar |
 | --- | --- |
-| **Estoque baixo ou zerado** | Considera o saldo elegível por item e unidade. De uma a cinco unidades, mostra saldo baixo. Zero unidades disponíveis gera alerta para um item já registrado em estoque. |
+| **Estoque baixo ou zerado** | Considera o saldo elegível por item e unidade. O alerta aparece quando o saldo atinge ou fica abaixo do mínimo. Um item com mínimo configurado pode aparecer zerado mesmo antes da primeira entrada. |
 | **Validade do CA** | Considera o Certificado de Aprovação registrado em um EPI ativo. O prazo acompanha o cadastro do item. |
 | **Validade de produto ou lote** | Considera a validade física de lotes de itens ativos com saldo. O alerta identifica o lote e o almoxarifado. |
 
-Os três prazos de validade começam em **7, 15 e 30 dias**. O administrador pode ajustá-los em **Alertas → Configurar prazos de alerta**, usando três números em ordem crescente entre 1 e 365. O alerta do estoque usa o limite de cinco unidades definido em `lib/stock-availability.ts`.
+Os três prazos de validade começam em **7, 15 e 30 dias**. O administrador pode ajustá-los em **Alertas → Configurar prazos de alerta**, usando três números em ordem crescente entre 1 e 365. Em **Estoque → Estoque mínimo**, o administrador e o gestor definem o limite por item e unidade. **Usar padrão** restaura o limite de cinco unidades. O valor zero aciona o alerta quando o saldo zera.
 
 O vencimento do CA e o vencimento físico do lote são eventos separados. A validação de entrega aplica o bloqueio por validade física do lote. O vencimento do CA gera acompanhamento no painel. As notificações desta versão são apresentadas no aplicativo.
 

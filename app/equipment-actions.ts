@@ -9,7 +9,7 @@ import { canAdminister, requireScope, type AccessScope } from "@/lib/auth";
 import { attachmentLimit, replacementPhotoTypes } from "@/lib/attachment-limits";
 import { db } from "@/lib/db";
 import { employeesWhere, unitsWhere } from "@/lib/directory";
-import { handlesStock, hasPersonalEquipment, ownEmployeeId, requestWhere } from "@/lib/equipment-access";
+import { canSetStockMinimum, handlesStock, hasPersonalEquipment, ownEmployeeId, requestWhere } from "@/lib/equipment-access";
 import { brazilDay, jobTitleKey, retirementLabels, todayInBrazil } from "@/lib/equipment";
 import { text, type FormResult } from "@/lib/forms";
 
@@ -131,6 +131,29 @@ export async function addStock(companyId: string, _: FormResult, data: FormData)
       where: { companyId_warehouseId_lotId: key }, create: { ...key, quantity }, update: { quantity: { increment: quantity } },
     });
     await tx.stockMovement.create({ data: { ...key, actorId, delta: quantity } });
+  });
+}
+
+export async function saveStockMinimum(companyId: string, _: FormResult, data: FormData) {
+  return mutate(companyId, canSetStockMinimum, async (tx, scope) => {
+    const unitId = field(data, "unit", "Unidade");
+    const equipmentId = field(data, "equipment", "Item");
+    const raw = text(data, "quantity");
+    const quantity = Number(raw);
+    if (!/^\d+$/.test(raw) || quantity > 1_000_000) return invalid("Informe um estoque mínimo entre 0 e 1.000.000.");
+    const [unit, item] = await Promise.all([
+      tx.unit.findFirst({ where: { AND: [unitsWhere(scope), { id: unitId, active: true }] }, select: { id: true } }),
+      tx.equipment.findUnique({ where: { companyId_id: { companyId, id: equipmentId }, active: true }, select: { id: true } }),
+    ]);
+    if (!unit || !item) return invalid("Selecione uma unidade no seu escopo e um item ativo desta empresa.");
+    const key = { companyId, unitId, equipmentId };
+    await tx.stockMinimum.upsert({ where: { companyId_unitId_equipmentId: key }, create: { ...key, quantity }, update: { quantity } });
+  });
+}
+
+export async function resetStockMinimum(companyId: string, unitId: string, equipmentId: string, _: FormResult) {
+  return mutate(companyId, canSetStockMinimum, async (tx, scope) => {
+    await tx.stockMinimum.deleteMany({ where: { companyId, unitId, equipmentId, unit: unitsWhere(scope) } });
   });
 }
 

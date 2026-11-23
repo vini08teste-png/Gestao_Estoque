@@ -40,6 +40,7 @@ model Unit {
   rules ApprovalRule[]
   requests EquipmentRequest[]
   expectedItems ExpectedItem[]
+  stockMinimums StockMinimum[]
 
   @@id([companyId, id])
   @@unique([companyId, name])
@@ -168,6 +169,7 @@ model Equipment {
   deliveries  Delivery[]
   rules       ApprovalRule[]
   expectedFor ExpectedItem[]
+  stockMinimums StockMinimum[]
 
   @@id([companyId, id])
   @@index([companyId, name])
@@ -213,6 +215,17 @@ model EquipmentLot {
 
   @@id([companyId, id])
   @@unique([companyId, equipmentId, code])
+}
+
+model StockMinimum {
+  companyId   String
+  unitId      String
+  equipmentId String
+  quantity    Int
+  unit        Unit @relation(fields: [companyId, unitId], references: [companyId, id], onDelete: Restrict)
+  equipment   Equipment @relation(fields: [companyId, equipmentId], references: [companyId, id], onDelete: Restrict)
+
+  @@id([companyId, unitId, equipmentId])
 }
 
 model Stock {

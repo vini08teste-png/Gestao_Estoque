@@ -6,7 +6,7 @@ import { unitsWhere } from "@/lib/directory";
 import { requestWhere } from "@/lib/equipment-access";
 import { todayInBrazil } from "@/lib/equipment";
 
-export const lowStockLimit = 5;
+export const defaultStockMinimum = 5;
 export const stockKey = (unitId: string, equipmentId: string) => JSON.stringify([unitId, equipmentId]);
 
 export function availableLotWhere(today: Date): Prisma.EquipmentLotWhereInput {
@@ -51,8 +51,22 @@ export async function stockBalances(scope: AccessScope, unitIds: string[] = [], 
 }
 
 export async function stockAlerts(scope: AccessScope, unitId = "") {
-  const balances = await stockBalances(scope, unitId ? [unitId] : []);
-  return [...balances.entries()].filter(([, row]) => row.quantity <= lowStockLimit)
+  const [balances, settings] = await Promise.all([
+    stockBalances(scope, unitId ? [unitId] : []),
+    db.stockMinimum.findMany({
+      where: { companyId: scope.companyId, unit: { ...unitsWhere(scope), active: true, ...(unitId && { AND: [{ id: unitId }] }) }, equipment: { active: true } },
+      select: { unitId: true, equipmentId: true, quantity: true,
+        unit: { select: { name: true } }, equipment: { select: { name: true } } },
+    }),
+  ]);
+  const thresholds = new Map<string, number>();
+  for (const row of settings) {
+    const key = stockKey(row.unitId, row.equipmentId);
+    thresholds.set(key, row.quantity);
+    if (!balances.has(key)) balances.set(key, { unit: row.unit.name, equipment: row.equipment.name, quantity: 0, largestLot: 0 });
+  }
+  return [...balances.entries()].map(([key, row]) => [key, { ...row, minimum: thresholds.get(key) ?? defaultStockMinimum }] as const)
+    .filter(([, row]) => row.quantity <= row.minimum)
     .sort(([, a], [, b]) => a.quantity - b.quantity || a.equipment.localeCompare(b.equipment, "pt-BR") || a.unit.localeCompare(b.unit, "pt-BR"));
 }
 

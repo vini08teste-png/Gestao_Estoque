@@ -213,6 +213,24 @@ button:disabled { cursor: wait; opacity: .68; }
 .replacement-photo { display: grid; justify-items: start; gap: 8px; margin-top: 8px; }
 .replacement-photo img { display: block; width: auto; max-width: 100%; max-height: 320px; border: 1px solid var(--line); border-radius: 8px; object-fit: contain; }
 .replacement-photo button { cursor: pointer; }
+.barcode-lab { max-width: 1040px; }
+.barcode-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 390px), 1fr)); gap: 14px; align-items: start; }
+.barcode-panel { display: grid; gap: 12px; min-width: 0; padding: 16px; }
+.barcode-lab > .barcode-panel { margin-top: 14px; }
+.barcode-panel p { font-size: .875rem; color: var(--muted); overflow-wrap: anywhere; }
+.barcode-panel .text-action { cursor: pointer; }
+.barcode-panel > .button { justify-self: start; }
+.barcode-panel video { width: 100%; max-height: 280px; border-radius: 8px; background: var(--sidebar); }
+.barcode-panel .operation-actions { align-items: end; }
+.barcode-panel input[type="file"] { width: 100%; max-width: 290px; }
+.barcode-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 155px), 1fr)); gap: 6px 12px; font-size: .875rem; overflow-wrap: anywhere; }
+.barcode-fields:empty, .barcode-message:empty { display: none; }
+.barcode-fields dt { color: var(--muted); }
+.barcode-fields dd { font-weight: 650; }
+.barcode-results { display: grid; gap: 10px; overflow-wrap: anywhere; }
+.barcode-results li { display: grid; gap: 5px; padding: 9px 0; border-top: 1px solid var(--line); }
+.barcode-results h3 { font-weight: 700; }
+.barcode-results .text-action { justify-self: start; }
 .team-member summary { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 12px; padding: 14px 16px; cursor: pointer; }
 .team-member summary::-webkit-details-marker { display: none; }
 .team-member summary:hover { background: #f7f8fb; border-radius: 12px; }

@@ -6,6 +6,7 @@ import { employeesWhere, unitsWhere } from "./directory";
 export const handlesStock = (scope: AccessScope) => canAdminister(scope) || scope.role === "MANAGER" ||
   scope.role === "WAREHOUSE" || (scope.role === "SUPERVISOR" && scope.employee?.active === true);
 export const hasPersonalEquipment = (scope: AccessScope) => scope.employee?.active === true;
+export const canSetStockMinimum = (scope: AccessScope) => canAdminister(scope) || scope.role === "MANAGER";
 
 export function ownEmployeeId(scope: AccessScope) {
   return hasPersonalEquipment(scope) ? scope.employee?.id ?? "" : "";

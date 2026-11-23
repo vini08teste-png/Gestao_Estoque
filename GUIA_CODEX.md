@@ -56,7 +56,7 @@ A [documentação do sistema](docs/README.md) detalha o comportamento implementa
 - Alertas configuráveis: inicialmente 30, 15 e 7 dias; vencido/atrasado após a data.
 - Solicitações seguem para atendimento sem aprovação. Pedidos fora do catálogo passam pela identificação do item antes da entrega.
 - As regras de aprovação por unidade e item ficam disponíveis para uso futuro. Quando a aprovação for ativada, a regra específica prevalece sobre a geral e a aprovação é exigida na ausência de regra.
-- O estoque baixo sinaliza até cinco unidades disponíveis por item e unidade. O saldo disponível considera somente lotes válidos e liberados de almoxarifados ativos. A fila informa quando falta saldo para atender a quantidade pedida.
+- O estoque baixo usa o limite por item e unidade, com padrão de cinco unidades disponíveis. O saldo disponível considera somente lotes válidos e liberados de almoxarifados ativos. A fila informa quando falta saldo para atender a quantidade pedida.
 - Solicitação com aprovação: `pendente_aprovacao -> aguardando_entrega -> concluida`; rejeição com justificativa.
 - Solicitação sem aprovação: `aguardando_entrega -> concluida`.
 - Uma solicitação por item. O atendimento é integral, e pedidos em aberto podem ser cancelados.

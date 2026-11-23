@@ -488,3 +488,53 @@ test("o rótulo do menu recolhido aparece acima do banner ao usar mouse ou tecla
   await link.focus();
   await expect.poll(aboveBanner).toBe(true);
 });
+
+test("o gestor define um mínimo na unidade e o alerta usa o saldo elegível", async ({ page }) => {
+  await signIn(page, scenario.manager);
+  await page.goto("/tsa/estoque?acao=minimos");
+  const units = page.locator('select[name="unit"]');
+  await expect(units.locator(`option[value="${scenario.outsideUnit.id}"]`)).toHaveCount(0);
+  await units.selectOption(scenario.unit.id);
+  await page.locator('select[name="equipment"]').selectOption(scenario.hidden.item.id);
+  await page.getByLabel(/Quantidade mínima/).fill("20");
+  await page.getByRole("button", { name: "Salvar mínimo" }).click();
+  await expect(page.getByRole("status")).toHaveText("Alterações salvas.");
+  await page.goto("/tsa/alertas?tipo=estoque");
+  const alert = page.getByRole("region", { name: "Estoque baixo ou zerado" })
+    .getByRole("listitem").filter({ hasText: scenario.hidden.item.name });
+  await expect(alert).toContainText("Mínimo 20 un.");
+  await expect(alert).toContainText("Sem saldo disponível");
+  await page.goto("/tsa/estoque?acao=minimos");
+  await page.getByRole("button", { name: "Usar padrão" }).click();
+  await expect(page.getByText(scenario.hidden.item.name, { exact: true, selector: "td div" })).toHaveCount(0);
+  await page.goto("/tsa/alertas?tipo=estoque");
+  await expect(alert).toHaveCount(0);
+  await signOut(page);
+  await signIn(page, scenario.operator);
+  expect((await page.goto("/tsa/estoque?acao=minimos"))?.status()).toBe(404);
+});
+
+test("página pública interpreta GS1, compara fontes e salva um teste local", async ({ page }) => {
+  await page.setViewportSize({ width: 360, height: 800 });
+  await page.route("**/api/teste-codigo-barras?*", async (route) => {
+    expect(new URL(route.request().url()).searchParams.get("gtin")).toBe("03017624010701");
+    await route.fulfill({ json: { results: [
+      { source: "food", status: "found", product: { name: "Produto de teste", brand: "Marca de teste" } },
+      { source: "products", status: "missing" },
+      { source: "upc", status: "unavailable", message: "Limite de consultas atingido." },
+    ] } });
+  });
+  expect((await page.goto("/teste-codigo-barras"))?.status()).toBe(200);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(360);
+  await page.getByRole("button", { name: "Exemplo GS1 com lote e validade" }).click();
+  await expect(page.getByLabel("Validade", { exact: true })).toHaveValue("2027-11-30");
+  await expect(page.getByLabel("Lote", { exact: true })).toHaveValue("TESTE-01");
+  await page.getByRole("button", { name: "Consultar fontes selecionadas" }).click();
+  await expect(page.getByText("Produto não encontrado", { exact: true })).toBeVisible();
+  await expect(page.getByText("Limite de consultas atingido.", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Usar estes dados" }).click();
+  await page.getByRole("button", { name: "Salvar teste no navegador" }).click();
+  await page.reload();
+  await expect(page.getByRole("region", { name: "Registros deste navegador" })).toContainText("Produto de teste");
+  expect((await page.request.get("/api/teste-codigo-barras?gtin=12345678&source=food")).status()).toBe(400);
+});

@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
 import {
   addStock, confirmReceipt, decideRequest, identifyItem, openRequest, registerDelivery, requestReplacement, retireDelivery,
-  removeExpectedItem, saveEquipment, saveExpectedItem, saveLot, saveRule, saveWarehouse, setLotBlocked,
+  removeExpectedItem, resetStockMinimum, saveEquipment, saveExpectedItem, saveLot, saveRule, saveStockMinimum, saveWarehouse, setLotBlocked,
 } from "@/app/equipment-actions";
 import { ActionForm } from "@/components/action-form";
 import { DeliveryFields } from "@/components/delivery-fields";
@@ -15,11 +15,11 @@ import { Icon } from "@/components/icon";
 import { canAdminister, type AccessScope } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { employeesWhere, unitsWhere } from "@/lib/directory";
-import { handlesStock, hasPersonalEquipment, operationalDeliveryWhere, ownEmployeeId, requestWhere } from "@/lib/equipment-access";
+import { canSetStockMinimum, handlesStock, hasPersonalEquipment, operationalDeliveryWhere, ownEmployeeId, requestWhere } from "@/lib/equipment-access";
 import { brazilDay, formatDay, inputDay, latestByItem, requestLabels, retirementLabels, todayInBrazil } from "@/lib/equipment";
 import { inventoryTitle, itemCatalogTitle, operationRequestTab } from "@/lib/organization";
 import { openRequestStatuses } from "@/lib/reporting";
-import { availableLotWhere, requestAvailability, stockBalances, stockKey } from "@/lib/stock-availability";
+import { availableLotWhere, defaultStockMinimum, requestAvailability, stockBalances, stockKey } from "@/lib/stock-availability";
 import type { RequestStatus } from "@/generated/prisma/enums";
 
 function Heading({ title, note, action }: { title: string; note?: string; action?: ReactNode }) {
@@ -103,6 +103,7 @@ export async function Inventory({ scope, operation }: { scope: AccessScope; oper
   const admin = canAdminister(scope);
   const operator = handlesStock(scope);
   if (!operator) notFound();
+  if (operation === "minimos") return <StockMinimums scope={scope} />;
   if (operation && !["entrada", "lote", "almoxarifado"].includes(operation)) notFound();
   const root = `/${companyId}/estoque`;
   const [stocks, warehouses, lots, items, units] = await Promise.all([
@@ -124,6 +125,7 @@ export async function Inventory({ scope, operation }: { scope: AccessScope; oper
     <Heading title={inventoryTitle} note="Consulte saldos, lotes e validades. Registre a entrada de EPIs e uniformes."
       action={operation ? <Link className="button" href={root}>Voltar ao estoque</Link> : operator && <div className="operation-actions">
         {admin && <Link className="button" href={`/${companyId}/usuarios?perfil=WAREHOUSE`}>Gerenciar responsáveis</Link>}
+        {canSetStockMinimum(scope) && <Link className="button" href={`${root}?acao=minimos`}>Estoque mínimo</Link>}
         <Link className="button" href={`${root}?acao=almoxarifado`}>Novo almoxarifado</Link>
         <Link className="button" href={`${root}?acao=lote`}>Novo lote</Link>
         <Link className="button primary" href={`${root}?acao=entrada`}>Registrar entrada</Link>
@@ -151,6 +153,37 @@ export async function Inventory({ scope, operation }: { scope: AccessScope; oper
             <ActionForm action={setLotBlocked.bind(null, companyId, row.id, !row.blocked)} label={row.blocked ? "Desbloquear" : "Bloquear"} />])} />
       </>}
     </>}
+  </>;
+}
+
+async function StockMinimums({ scope }: { scope: AccessScope }) {
+  if (!canSetStockMinimum(scope)) notFound();
+  const { companyId } = scope;
+  const [units, items, settings] = await Promise.all([
+    db.unit.findMany({ where: { ...unitsWhere(scope), active: true }, orderBy: { name: "asc" } }),
+    db.equipment.findMany({ where: { companyId, active: true }, orderBy: { name: "asc" } }),
+    db.stockMinimum.findMany({ where: { companyId, unit: unitsWhere(scope) }, include: { unit: true, equipment: true },
+      orderBy: [{ unit: { name: "asc" } }, { equipment: { name: "asc" } }] }),
+  ]);
+  return <>
+    <Heading title="Estoque mínimo" note={`O alerta aparece quando o saldo atinge o mínimo. O padrão é de ${defaultStockMinimum} unidades por item e unidade.`}
+      action={<Link className="button" href={`/${companyId}/estoque`}>Voltar ao estoque</Link>} />
+    <Editor title="Definir mínimo">
+      <ActionForm action={saveStockMinimum.bind(null, companyId)} label="Salvar mínimo">
+        <div className="form-grid">
+          <Choose label="Unidade" name="unit" values={units} />
+          <Choose label="Item" name="equipment" values={items} />
+          <label className="field">Quantidade mínima
+            <input name="quantity" type="number" min={0} max={1_000_000} defaultValue={defaultStockMinimum} required />
+            <small>Use 0 para alertar apenas quando o saldo zerar.</small>
+          </label>
+        </div>
+      </ActionForm>
+    </Editor>
+    <h2 className="section-title">Mínimos por item e unidade</h2>
+    <Records cardsOnMobile columns={["Item", "Unidade", "Quantidade mínima", "Ação"]}
+      rows={settings.map((row) => [JSON.stringify([row.unitId, row.equipmentId]), row.equipment.name, row.unit.name, row.quantity,
+        <ActionForm action={resetStockMinimum.bind(null, companyId, row.unitId, row.equipmentId)} label="Usar padrão" />])} />
   </>;
 }
 

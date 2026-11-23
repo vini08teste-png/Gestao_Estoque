@@ -31,6 +31,8 @@ O aplicativo usa Next.js com App Router, React e TypeScript. As páginas protegi
 | `/exportar/{empresa}` | CSV com os filtros do relatório. |
 | `/comprovantes/{empresa}/{entrega}` | Download privado de comprovante de entrega. |
 | `/fotos-de-troca/{empresa}/{pedido}` | Exibição privada da foto de troca. |
+| `/teste-codigo-barras` | Página pública de teste. Salva os registros no navegador. |
+| `/api/teste-codigo-barras` | Consulta um GTIN válido nas fontes selecionadas. |
 
 ## Relações no PostgreSQL
 
@@ -42,6 +44,7 @@ O aplicativo usa Next.js com App Router, React e TypeScript. As páginas protegi
 | `Session`, `LoginAttempt` | Guardam as sessões e as janelas de tentativas de autenticação. |
 | `Equipment`, `EquipmentLot`, `Stock` | Um item pode ter vários lotes. A chave do saldo inclui empresa, almoxarifado e lote. |
 | `ExpectedItem` | Vincula um item e uma quantidade a uma função, uma unidade ou à combinação dos dois dentro da empresa. |
+| `StockMinimum` | Guarda o mínimo por empresa, unidade e item. O padrão é de cinco unidades. |
 | `StockMovement`, `Delivery` | Movimentos positivos registram entradas. A entrega cria uma movimentação negativa vinculada à saída. |
 | `EquipmentRequest`, `ApprovalRule` | O pedido guarda solicitante, unidade, item ou descrição e situação. As regras guardam exigência de aprovação por unidade e, opcionalmente, por item. |
 | `DeliveryReceipt`, `DeliveryRetirement` | Registram a confirmação do destinatário e a retirada de uso com autor e horário. |
