@@ -1,0 +1,18 @@
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: epi
+      POSTGRES_USER: epi
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?Defina POSTGRES_PASSWORD no arquivo .env}"
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - epi_postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "epi", "-d", "epi"]
+      interval: 3s
+      timeout: 3s
+      retries: 15
+volumes:
+  epi_postgres:

@@ -1,0 +1,358 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  ADMIN
+  MANAGER
+  SUPERVISOR
+  WAREHOUSE
+  EMPLOYEE
+}
+
+model Company {
+  id        String      @id
+  name      String
+  alertDays Int[]       @default([7, 15, 30])
+  requestApprovalEnabled Boolean @default(false)
+  units     Unit[]
+  employees Employee[]
+  scopes    UserScope[]
+  equipment Equipment[]
+}
+
+model Unit {
+  id        String      @default(cuid())
+  companyId String
+  name      String
+  active    Boolean     @default(true)
+  company   Company     @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  employees Employee[]
+  scopes    ScopeUnit[]
+  warehouses Warehouse[]
+  rules ApprovalRule[]
+  requests EquipmentRequest[]
+
+  @@id([companyId, id])
+  @@unique([companyId, name])
+}
+
+model Employee {
+  id           String     @default(cuid())
+  companyId    String
+  unitId       String
+  registration String
+  name         String
+  department   String
+  jobTitle     String
+  active       Boolean    @default(true)
+  supervisorId String?
+  company      Company    @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  unit         Unit       @relation(fields: [companyId, unitId], references: [companyId, id], onDelete: Restrict)
+  supervisor   Employee?  @relation("Team", fields: [companyId, unitId, supervisorId], references: [companyId, unitId, id], onDelete: Restrict, onUpdate: Restrict)
+  team         Employee[] @relation("Team")
+  scope        UserScope?
+  deliveries  Delivery[]
+  requests    EquipmentRequest[]
+
+  @@id([companyId, id])
+  @@unique([companyId, registration])
+  @@unique([companyId, unitId, id])
+  @@index([companyId, unitId, supervisorId])
+}
+
+model User {
+  id           String      @id @default(cuid())
+  email        String      @unique
+  passwordHash String
+  mustChangePassword Boolean @default(false)
+  scopes       UserScope[]
+  sessions     Session[]
+  deliveries  Delivery[]
+  movements   StockMovement[]
+  events      EquipmentEvent[]
+  receipts    DeliveryReceipt[]
+  retirements DeliveryRetirement[]
+}
+
+model UserScope {
+  userId    String
+  companyId String
+  name      String
+  role      Role
+  active    Boolean     @default(true)
+  allUnits  Boolean
+  employeeId String?
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  company   Company     @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  employee  Employee?   @relation(fields: [companyId, employeeId], references: [companyId, id], onDelete: Restrict)
+  units     ScopeUnit[]
+
+  @@id([companyId, userId])
+  @@unique([companyId, employeeId])
+  @@index([userId])
+}
+
+model ScopeUnit {
+  companyId String
+  userId    String
+  unitId    String
+  scope     UserScope @relation(fields: [companyId, userId], references: [companyId, userId], onDelete: Cascade)
+  unit      Unit      @relation(fields: [companyId, unitId], references: [companyId, id], onDelete: Restrict)
+
+  @@id([companyId, userId, unitId])
+  @@index([companyId, unitId])
+}
+
+model Session {
+  tokenHash String   @id
+  userId    String
+  expiresAt DateTime
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model LoginAttempt {
+  key       String   @id
+  startedAt DateTime
+  attempts  Int
+
+  @@index([startedAt])
+}
+
+enum RequestStatus {
+  WAITING_CATALOG
+  PENDING_APPROVAL
+  WAITING_DELIVERY
+  COMPLETED
+  REJECTED
+  CANCELLED
+}
+
+enum ItemCategory {
+  EPI
+  UNIFORM
+}
+
+enum RetirementReason {
+  EXPIRED
+  DAMAGED
+  OTHER
+}
+
+model Equipment {
+  companyId   String
+  id          String   @default(cuid())
+  name        String
+  category    ItemCategory @default(EPI)
+  makerModel  String
+  certificate String?
+  caExpiresAt DateTime? @db.Date
+  replacementDays Int?
+  notes       String
+  active      Boolean  @default(true)
+  company     Company  @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  lots        EquipmentLot[]
+  requests    EquipmentRequest[]
+  deliveries  Delivery[]
+  rules       ApprovalRule[]
+
+  @@id([companyId, id])
+  @@index([companyId, name])
+}
+
+model Warehouse {
+  companyId String
+  id        String @default(cuid())
+  unitId    String
+  name      String
+  active    Boolean @default(true)
+  unit      Unit @relation(fields: [companyId, unitId], references: [companyId, id], onDelete: Restrict)
+  stocks    Stock[]
+
+  @@id([companyId, id])
+  @@unique([companyId, unitId, name])
+}
+
+model EquipmentLot {
+  companyId    String
+  id           String @default(cuid())
+  equipmentId  String
+  code         String
+  expiresAt    DateTime? @db.Date
+  blocked      Boolean @default(false)
+  equipment    Equipment @relation(fields: [companyId, equipmentId], references: [companyId, id], onDelete: Restrict)
+  stocks       Stock[]
+
+  @@id([companyId, id])
+  @@unique([companyId, equipmentId, code])
+}
+
+model Stock {
+  companyId   String
+  warehouseId String
+  lotId       String
+  quantity    Int @default(0)
+  warehouse   Warehouse @relation(fields: [companyId, warehouseId], references: [companyId, id], onDelete: Restrict)
+  lot         EquipmentLot @relation(fields: [companyId, lotId], references: [companyId, id], onDelete: Restrict)
+  deliveries  Delivery[]
+  movements   StockMovement[]
+
+  @@id([companyId, warehouseId, lotId])
+  @@index([companyId, lotId])
+}
+
+model StockMovement {
+  id           String @id @default(cuid())
+  companyId    String
+  warehouseId  String
+  lotId        String
+  delta        Int
+  actorId      String
+  occurredAt   DateTime @default(now())
+  deliveryId   String?
+  stock        Stock @relation(fields: [companyId, warehouseId, lotId], references: [companyId, warehouseId, lotId], onDelete: Restrict)
+  actor        User @relation(fields: [actorId], references: [id], onDelete: Restrict)
+  delivery     Delivery? @relation(fields: [companyId, deliveryId], references: [companyId, id], onDelete: Restrict)
+
+  @@unique([companyId, deliveryId])
+  @@index([companyId, warehouseId, lotId, occurredAt])
+}
+
+model ApprovalRule {
+  id          String @id @default(cuid())
+  companyId   String
+  unitId      String
+  equipmentId String?
+  required    Boolean
+  unit        Unit @relation(fields: [companyId, unitId], references: [companyId, id], onDelete: Restrict)
+  equipment   Equipment? @relation(fields: [companyId, equipmentId], references: [companyId, id], onDelete: Restrict)
+
+  @@index([companyId, unitId, equipmentId])
+}
+
+model EquipmentRequest {
+  companyId   String
+  id          String
+  employeeId  String
+  unitId      String
+  equipmentId String?
+  requestedItem String?
+  quantity    Int
+  reason      String
+  status      RequestStatus
+  openedAt    DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  decisionNote String?
+  replacementForId String?
+  employee    Employee @relation(fields: [companyId, employeeId], references: [companyId, id], onDelete: Restrict)
+  unit        Unit @relation(fields: [companyId, unitId], references: [companyId, id], onDelete: Restrict)
+  equipment   Equipment? @relation(fields: [companyId, equipmentId], references: [companyId, id], onDelete: Restrict)
+  delivery    Delivery?
+  replacementFor Delivery? @relation("ReplacementFor", fields: [companyId, replacementForId], references: [companyId, id], onDelete: Restrict)
+  photo       ReplacementPhoto?
+
+  @@id([companyId, id])
+  @@index([companyId, unitId, status])
+  @@index([companyId, employeeId, openedAt])
+  @@index([companyId, replacementForId])
+}
+
+model Delivery {
+  companyId      String
+  id             String
+  employeeId     String
+  equipmentId    String
+  warehouseId    String
+  lotId          String
+  actorId        String
+  requestId      String?
+  quantity       Int
+  deliveredAt    DateTime @db.Date
+  suggestedAt    DateTime? @db.Date
+  replacementAt  DateTime? @db.Date
+  adjustmentNote String?
+  createdAt      DateTime @default(now())
+  employee       Employee @relation(fields: [companyId, employeeId], references: [companyId, id], onDelete: Restrict)
+  equipment      Equipment @relation(fields: [companyId, equipmentId], references: [companyId, id], onDelete: Restrict)
+  stock          Stock @relation(fields: [companyId, warehouseId, lotId], references: [companyId, warehouseId, lotId], onDelete: Restrict)
+  actor          User @relation(fields: [actorId], references: [id], onDelete: Restrict)
+  request        EquipmentRequest? @relation(fields: [companyId, requestId], references: [companyId, id], onDelete: Restrict)
+  movement       StockMovement?
+  proof          DeliveryProof?
+  receipt        DeliveryReceipt?
+  retirement     DeliveryRetirement?
+  replacementRequests EquipmentRequest[] @relation("ReplacementFor")
+
+  @@id([companyId, id])
+  @@unique([companyId, requestId])
+  @@index([companyId, employeeId, equipmentId, deliveredAt, createdAt])
+}
+
+model DeliveryRetirement {
+  companyId String
+  deliveryId String
+  actorId String
+  reason RetirementReason
+  note String
+  retiredAt DateTime @default(now())
+  delivery Delivery @relation(fields: [companyId, deliveryId], references: [companyId, id], onDelete: Restrict)
+  actor User @relation(fields: [actorId], references: [id], onDelete: Restrict)
+
+  @@id([companyId, deliveryId])
+}
+
+model DeliveryReceipt {
+  companyId   String
+  deliveryId  String
+  actorId     String
+  confirmedAt DateTime @default(now())
+  delivery    Delivery @relation(fields: [companyId, deliveryId], references: [companyId, id], onDelete: Restrict)
+  actor       User @relation(fields: [actorId], references: [id], onDelete: Restrict)
+
+  @@id([companyId, deliveryId])
+}
+
+model DeliveryProof {
+  companyId  String
+  deliveryId String
+  mime       String
+  name       String
+  sha256     String
+  content    Bytes
+  delivery   Delivery @relation(fields: [companyId, deliveryId], references: [companyId, id], onDelete: Restrict)
+
+  @@id([companyId, deliveryId])
+}
+
+model ReplacementPhoto {
+  companyId String
+  requestId String
+  mime      String
+  sha256    String
+  content   Bytes
+  request   EquipmentRequest @relation(fields: [companyId, requestId], references: [companyId, id], onDelete: Restrict)
+
+  @@id([companyId, requestId])
+}
+
+model EquipmentEvent {
+  id         String @id @default(cuid())
+  companyId  String
+  subjectId  String
+  actorId    String
+  kind       String
+  note       String?
+  occurredAt DateTime @default(now())
+  actor      User @relation(fields: [actorId], references: [id], onDelete: Restrict)
+
+  @@index([companyId, subjectId, occurredAt])
+}
