@@ -1,6 +1,7 @@
 import "server-only";
 import type { Prisma } from "@/generated/prisma/client";
 import { canAdminister, type AccessScope } from "./auth";
+import { db } from "./db";
 import { employeesWhere, unitsWhere } from "./directory";
 
 export const handlesStock = (scope: AccessScope) => canAdminister(scope) || scope.role === "MANAGER" ||
@@ -34,7 +35,9 @@ export function operationalDeliveryWhere(scope: AccessScope): Prisma.DeliveryWhe
   };
 }
 
-export const deliveriesAwaitingReceipt = { warehouseId: { not: null }, receipt: null } satisfies Prisma.DeliveryWhereInput;
+export const deliveriesAwaitingReceipt = {
+  warehouseId: { not: null }, receipt: null, returnedQuantity: { lt: db.delivery.fields.quantity },
+} satisfies Prisma.DeliveryWhereInput;
 
 export function deliveryCorrectionFields(delivery: {
   warehouseId: string | null; requestId: string | null; retirement: object | null; proof: object | null;

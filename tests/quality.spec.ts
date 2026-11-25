@@ -162,6 +162,12 @@ test("restringe histórico, exportação, comprovantes e pedidos à empresa e à
   expect((await page.request.get(`/exportar/tsa?unidade=${scenario.outsideUnit.id}`)).status()).toBe(400);
   expect((await page.request.get("/exportar/lynx")).status()).toBe(404);
   expect((await page.request.get("/lynx/relatorios")).status()).toBe(404);
+  await page.goto("/tsa/relatorios");
+  await page.getByLabel("Relatório", { exact: true }).selectOption("ficha");
+  await expect(page.getByLabel("Colaborador").locator(`option[value="${scenario.outside.id}"]`)).toHaveCount(0);
+  await page.goto(`/tsa/relatorios?tipo=ficha&colaborador=${scenario.outside.id}`);
+  await expect(page.getByRole("main").getByRole("alert")).toHaveText("O colaborador não está disponível no seu escopo.");
+  await expect(page.getByRole("button", { name: "Salvar em PDF" })).toHaveCount(0);
   expect((await page.request.get(`/comprovantes/tsa/${scenario.hiddenDelivery.id}`)).status()).toBe(404);
 
   await signOut(page);
@@ -900,4 +906,73 @@ test("captura, revisa e salva uma foto como comprovante de entrega", async ({ pa
   });
   expect(delivery.proof).toMatchObject({ mime: "image/jpeg", name: "comprovante.jpg" });
   expect((await page.request.get(`/comprovantes/tsa/${delivery.id}`)).status()).toBe(200);
+});
+
+test("troca registra a data de devolução e conserva o saldo do item recebido para descarte", async ({ page }) => {
+  const companyId = "tsa";
+  const warehouseId = scenario.warehouse.id;
+  const originalItem = await db.equipment.create({ data: {
+    companyId, name: `EPI antigo ${scenario.tag}`, category: "EPI", certificate: "33835", makerModel: "Teste", notes: "",
+  } });
+  const oldLot = await db.equipmentLot.create({ data: { companyId, equipmentId: originalItem.id, code: "ORIGINAL" } });
+  const oldKey = { companyId, warehouseId, lotId: oldLot.id };
+  await db.stock.create({ data: { ...oldKey, quantity: 3 } });
+  const original = await db.delivery.create({ data: {
+    ...oldKey, id: randomUUID(), employeeId: scenario.worker.id, actorId: scenario.operator.id,
+    equipmentId: originalItem.id, quantity: 2, deliveredAt: new Date("2025-04-07"),
+    receipt: { create: { actorId: scenario.employeeAccount.id } },
+  } });
+  const request = await db.equipmentRequest.create({ data: {
+    companyId, id: randomUUID(), employeeId: scenario.worker.id, unitId: scenario.unit.id,
+    equipmentId: scenario.uniform.item.id, quantity: 1, reason: "Substituição parcial.", status: "WAITING_DELIVERY",
+    replacementForId: original.id,
+  } });
+  const balance = async () => (await db.stock.findUniqueOrThrow({ where: { companyId_warehouseId_lotId: oldKey } })).quantity;
+  const handledRequest = async () => db.equipmentRequest.findUniqueOrThrow({
+    where: { companyId_id: { companyId, id: request.id } }, include: { itemReturn: true },
+  });
+  await signIn(page, scenario.operator);
+  await page.goto(`/tsa/entregas?solicitacao=${request.id}`);
+  const returnedAt = page.getByLabel("Data da devolução");
+  await expect(returnedAt).toHaveValue("");
+  await expect(returnedAt).toHaveAttribute("required", "");
+  await page.getByRole("button", { name: "Confirmar entrega" }).click();
+  expect((await handledRequest()).status).toBe("WAITING_DELIVERY");
+  await returnedAt.fill("2025-04-11");
+  await page.getByRole("button", { name: "Confirmar entrega" }).click();
+  await expect(page.getByText("Entrega registrada e saldo atualizado.")).toBeVisible();
+  expect(await handledRequest()).toMatchObject({ status: "COMPLETED", itemReturn: {
+    deliveryId: original.id, returnedAt: new Date("2025-04-11"), quantity: 1, actorId: scenario.operator.id,
+  } });
+  expect(await balance()).toBe(3);
+  await expect(page.getByRole("row").filter({ hasText: originalItem.name })).toContainText("11/04/2025");
+  await page.goto("/tsa/relatorios");
+  const deliveries = page.getByRole("table", { name: "Entregas" });
+  const delivery = deliveries.getByRole("row").filter({ hasText: originalItem.name });
+  await expect(delivery.locator('[data-column="Colaborador"]')).toContainText(scenario.worker.registration, { ignoreCase: true });
+  await expect(delivery.locator('[data-column="Data de devolução"]')).toHaveText("11/04/2025");
+  await expect(deliveries.getByRole("columnheader", { name: "Almoxarifado" })).toHaveCount(0);
+  const csv = await (await page.request.get("/exportar/tsa")).text();
+  expect(csv).toContain('"Número do contrato";"Data de entrega";"Data de devolução"');
+  expect(csv).toContain('"07/04/2025";"11/04/2025"');
+  await page.getByLabel("Relatório", { exact: true }).selectOption("ficha");
+  await page.getByLabel("Colaborador").selectOption(scenario.worker.id);
+  await page.getByRole("button", { name: "Gerar ficha" }).click();
+  const sheet = page.getByRole("region", { name: "Ficha individual de controle de EPIs" });
+  await expect(sheet).toContainText(scenario.worker.registration, { ignoreCase: true });
+  await expect(sheet.getByRole("row").filter({ hasText: originalItem.name }).locator('[data-column="Nº do CA"]')).toHaveText("33835");
+  await expect(sheet.getByText("11/04/2025")).toBeVisible();
+  await expect(sheet.locator('tbody [data-column^="Rubrica"]').first()).toBeEmpty();
+  await expect(sheet.getByText("Setor")).toHaveCount(0);
+  await page.emulateMedia({ media: "print" });
+  await expect(sheet).toBeVisible();
+  await expect(page.getByLabel("Relatório", { exact: true })).toBeHidden();
+  const pdf = await page.pdf({ preferCSSPageSize: true });
+  expect(pdf.subarray(0, 5).toString()).toBe("%PDF-");
+  await page.emulateMedia({ media: "screen" });
+  await signOut(page);
+  await signIn(page, scenario.employeeAccount);
+  await page.goto("/tsa/meus-epis");
+  const originalCard = page.getByRole("region", { name: "Itens em uso" }).getByRole("article").filter({ hasText: originalItem.name });
+  await expect(originalCard.locator("dd").first()).toHaveText("1");
 });

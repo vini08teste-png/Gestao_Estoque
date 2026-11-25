@@ -166,6 +166,55 @@ button:disabled { cursor: wait; opacity: .68; }
 .personal-alerts { max-width: 580px; }
 .report-hint { margin-bottom: 12px; }
 .report-count { padding: 10px 14px; }
+.report-table th, .report-table td { padding: 11px 10px; vertical-align: top; }
+.report-table tbody tr:nth-child(even) { background: #fafbfd; }
+.report-table [data-column="Colaborador"] { min-width: 145px; }
+.report-table [data-column="Colaborador"] small { display: block; margin-top: 3px; color: var(--muted); white-space: nowrap; font-weight: 400; }
+.report-table [data-column="Especificação do EPI"] { min-width: 170px; }
+.report-table [data-column="Quantidade"], .report-table [data-column="Nº do CA"] { text-align: center; }
+.report-table .report-compact-value { white-space: pre; font-variant-numeric: tabular-nums; }
+.report-filters .field { min-width: 0; }
+.report-filters select { max-width: 100%; }
+.epi-print-sheet { padding: 20px; }
+.epi-sheet-heading { display: flex; align-items: center; gap: 16px; padding-bottom: 14px; border-bottom: 2px solid var(--brand); }
+.epi-sheet-heading .brand-logo { width: 86px; flex: none; }
+.epi-sheet-heading p, .epi-sheet-data dt, .epi-print-help { color: var(--muted); font-size: .875rem; }
+.epi-sheet-data { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px 16px; margin: 14px 0; }
+.epi-sheet-data dd { font-weight: 650; overflow-wrap: break-word; }
+.epi-print-sheet .report-table th, .epi-print-sheet .report-table td { border: 1px solid var(--line); }
+.epi-print-sheet .report-table [data-column^="Rubrica"] { min-width: 92px; }
+.epi-print-help { margin-top: 12px; }
+@media (max-width: 540px) {
+  .report-filters { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .report-filters .field:has(select), .report-filters .button { grid-column: 1 / -1; }
+  .report-filters :is(input, select) { width: 100%; min-width: 0; }
+  .report-filters .button { justify-content: center; }
+  .epi-print-sheet { padding: 14px; }
+  .epi-sheet-data { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@page epi-sheet { size: A4 landscape; margin: 12mm; }
+@media print {
+  html:has(.epi-print-sheet) { background: white; color: #111; }
+  .shell:has(.epi-print-sheet), .workspace:has(.epi-print-sheet) { display: block; min-height: 0; }
+  .shell:has(.epi-print-sheet) > :not(.workspace),
+  .workspace:has(.epi-print-sheet) > :not(main),
+  main:has(.epi-print-sheet) > :not(.epi-print-sheet),
+  .epi-print-help { display: none !important; }
+  main:has(.epi-print-sheet) { max-width: none; padding: 0; }
+  .epi-print-sheet { page: epi-sheet; padding: 0; border: 0; border-radius: 0; box-shadow: none; }
+  .epi-sheet-heading { border-color: #333; }
+  .epi-sheet-data { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .epi-print-sheet .table-scroll { overflow: visible; }
+  .epi-print-sheet table { table-layout: fixed; font-size: 9pt; }
+  .epi-print-sheet thead { display: table-header-group; }
+  .epi-print-sheet tr { break-inside: avoid; }
+  .epi-print-sheet .report-table th, .epi-print-sheet .report-table td { border-color: #777; padding: 6px 5px; }
+  .epi-print-sheet th { white-space: normal; }
+  .epi-print-sheet .report-table [data-column="Especificação do EPI"] { width: 21%; min-width: 0; }
+  .epi-print-sheet .report-table [data-column="Quantidade"] { width: 8%; }
+  .epi-print-sheet .report-table [data-column="Nº do CA"] { width: 7%; }
+  .epi-print-sheet .report-table [data-column^="Rubrica"] { height: 11mm; }
+}
 .deadline-settings { margin-top: 18px; }
 .deadline-settings summary { padding: 14px 18px; font-size: .9375rem; font-weight: 700; cursor: pointer; }
 .deadline-settings summary + form { border-top: 1px solid var(--line); }

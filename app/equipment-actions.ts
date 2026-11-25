@@ -232,6 +232,7 @@ async function latestOwnedDelivery(tx: Prisma.TransactionClient, scope: AccessSc
     where: { companyId_id: { companyId, id: deliveryId }, employeeId, voidedAt: null },
     select: {
       equipmentId: true, warehouseId: true, equipment: { select: { name: true, active: true } },
+      quantity: true, returnedQuantity: true,
       receipt: { select: { deliveryId: true } }, retirement: { select: { deliveryId: true } },
     },
   });
@@ -242,7 +243,8 @@ async function latestOwnedDelivery(tx: Prisma.TransactionClient, scope: AccessSc
     orderBy: [{ deliveredAt: "desc" }, { createdAt: "desc" }, { id: "desc" }],
     select: { id: true },
   });
-  if (latest?.id !== deliveryId) return invalid("Use a entrega mais recente desse item.");
+  if (delivery.returnedQuantity === delivery.quantity) return invalid("O item desta entrega já foi devolvido para descarte.");
+  if (latest?.id !== deliveryId && !delivery.returnedQuantity) return invalid("Use a entrega mais recente desse item.");
   return delivery;
 }
 
@@ -267,6 +269,10 @@ async function submitRequest(companyId: string, id: string, data: FormData, repl
     const employee = scope.employee!;
     if (await tx.equipmentRequest.findUnique({ where: { companyId_id: { companyId, id }, employeeId: employee.id } })) return;
     const source = replacementForId ? await latestOwnedDelivery(tx, scope, replacementForId) : null;
+    const quantity = count(data);
+    if (source && quantity > source.quantity - source.returnedQuantity) {
+      return invalid("A quantidade da troca ultrapassa a quantidade que ainda pode ser devolvida desta entrega.");
+    }
     if (replacementForId && await tx.equipmentRequest.findFirst({
       where: { companyId, replacementForId, status: { in: ["WAITING_CATALOG", "PENDING_APPROVAL", "WAITING_DELIVERY"] } },
       select: { id: true },
@@ -283,7 +289,7 @@ async function submitRequest(companyId: string, id: string, data: FormData, repl
     if (source && !reason && !photo) return invalid("Escreva a justificativa ou anexe uma foto.");
     await tx.equipmentRequest.create({
       data: { companyId, id, employeeId: employee.id, unitId: employee.unitId, equipmentId, requestedItem, status, replacementForId,
-        quantity: count(data), reason, ...(photo && { photo: { create: photo.data } }) },
+        quantity, reason, ...(photo && { photo: { create: photo.data } }) },
     });
     await tx.equipmentEvent.create({ data: { companyId, subjectId: id, actorId, kind: status } });
   });
@@ -378,7 +384,13 @@ async function deductDeliveryStock(tx: Prisma.TransactionClient, location: { com
 export async function registerDelivery(companyId: string, id: string, requestId: string | null, paper: boolean, _: FormResult, data: FormData) {
   const result = await mutate(companyId, handlesStock, async (tx, scope, actorId) => {
     if (await tx.delivery.findUnique({ where: { companyId_id: { companyId, id }, actorId } })) return;
-    const request = requestId ? await tx.equipmentRequest.findFirst({ where: { ...requestWhere(scope), id: requestId } }) : null;
+    const request = requestId ? await tx.equipmentRequest.findFirst({
+      where: { ...requestWhere(scope), id: requestId },
+      include: {
+        replacementFor: { select: { id: true, employeeId: true, deliveredAt: true, voidedAt: true, quantity: true, returnedQuantity: true } },
+        itemReturn: { select: { returnedAt: true } },
+      },
+    }) : null;
     if (requestId && (!request || request.status !== "WAITING_DELIVERY")) return invalid("Esta solicitação não aguarda entrega.");
     const employeeId = request?.employeeId ?? field(data, "employee", "Colaborador");
     const employee = await tx.employee.findFirst({ where: { ...employeesWhere(scope), id: employeeId, active: true, unit: { active: true } } });
@@ -389,6 +401,24 @@ export async function registerDelivery(companyId: string, id: string, requestId:
     const deliveredAt = parseDay(text(data, "deliveredAt"));
     if (deliveredAt > today) return invalid("A data da entrega não pode ser futura.");
     if (request && deliveredAt < brazilDay(request.openedAt)) return invalid("A data não pode ser anterior à abertura da solicitação.");
+    const source = request?.replacementFor;
+    if (source && request) {
+      if (source.voidedAt || source.employeeId !== employeeId) return invalid("A entrega original está indisponível para troca.");
+      const returnedAt = request.itemReturn?.returnedAt ?? parseDay(field(data, "returnedAt", "Data da devolução", 10));
+      if (returnedAt < source.deliveredAt || returnedAt > deliveredAt) {
+        return invalid("A data de devolução deve ficar entre a entrega original e a entrega de substituição.");
+      }
+      if (!request.itemReturn) {
+        if (quantity > source.quantity - source.returnedQuantity) return invalid("O pedido ultrapassa a quantidade disponível para devolução.");
+        await tx.deliveryReturn.create({ data: { companyId, requestId: request.id, deliveryId: source.id, actorId, quantity, returnedAt } });
+        await tx.delivery.update({
+          where: { companyId_id: { companyId, id: source.id } }, data: { returnedQuantity: { increment: quantity } },
+        });
+        await tx.equipmentEvent.create({
+          data: { companyId, subjectId: source.id, actorId, kind: "RETURNED_FOR_DISPOSAL", note: request.id },
+        });
+      }
+    }
     const proof = await readAttachment(data, "proof");
     const warehouseId = paper ? null : field(data, "warehouse", "Almoxarifado");
     const stocks = warehouseId ? await deliveryStock(tx, companyId, warehouseId, equipmentId, employee.unitId, today) : [];
@@ -442,7 +472,9 @@ export async function editDelivery(companyId: string, id: string, _: FormResult,
     const key = { companyId_id: { companyId, id } };
     const delivery = await tx.delivery.findUnique({ where: { ...key, voidedAt: null }, include: {
       employee: { select: { unitId: true } }, receipt: true, retirement: { select: { retiredAt: true } },
-      request: { select: { openedAt: true } }, _count: { select: { replacementRequests: true } }, proof: { select: { sha256: true } },
+      request: { select: { openedAt: true, itemReturn: { select: { returnedAt: true } } } },
+      returns: { orderBy: { returnedAt: "asc" }, take: 1, select: { returnedAt: true } },
+      _count: { select: { replacementRequests: true } }, proof: { select: { sha256: true } },
     } });
     if (!delivery) return invalid("Entrega indisponível no histórico.");
     const note = field(data, "note", "Motivo da correção", 500);
@@ -450,6 +482,8 @@ export async function editDelivery(companyId: string, id: string, _: FormResult,
     const today = todayInBrazil();
     if (deliveredAt > today) return invalid("A data da entrega não pode ser futura.");
     if (delivery.request && deliveredAt < brazilDay(delivery.request.openedAt)) return invalid("A data não pode ser anterior à abertura da solicitação.");
+    if (delivery.request?.itemReturn && deliveredAt < delivery.request.itemReturn.returnedAt) return invalid("A substituição não pode anteceder a devolução registrada.");
+    if (delivery.returns[0] && deliveredAt > delivery.returns[0].returnedAt) return invalid("A entrega original não pode ser posterior à devolução registrada.");
     if (delivery.receipt && deliveredAt > brazilDay(delivery.receipt.confirmedAt)) return invalid("A entrega deve anteceder ou coincidir com a confirmação de recebimento.");
     if (delivery.retirement && deliveredAt > brazilDay(delivery.retirement.retiredAt)) return invalid("A entrega deve anteceder ou coincidir com a retirada de uso.");
     const editable = deliveryCorrectionFields(delivery);
@@ -492,12 +526,13 @@ export async function editDelivery(companyId: string, id: string, _: FormResult,
 export async function voidDelivery(companyId: string, id: string, _: FormResult, data: FormData) {
   const result = await mutate(companyId, canAdminister, async (tx, _scope, actorId) => {
     const key = { companyId_id: { companyId, id } };
-    const delivery = await tx.delivery.findUnique({ where: key, select: { voidedAt: true, warehouseId: true, quantity: true, requestId: true,
+    const delivery = await tx.delivery.findUnique({ where: key, select: { voidedAt: true, warehouseId: true, quantity: true, requestId: true, returnedQuantity: true,
       request: { select: { replacementFor: { select: { voidedAt: true } } } },
       replacementRequests: { where: { status: { in: ["WAITING_CATALOG", "PENDING_APPROVAL", "WAITING_DELIVERY"] } }, select: { id: true } },
     } });
     if (!delivery) return invalid("Entrega indisponível no histórico.");
     if (delivery.voidedAt) return;
+    if (delivery.returnedQuantity) return invalid("Esta entrega tem uma devolução registrada para descarte e precisa permanecer no histórico.");
     const note = field(data, "note", "Motivo da exclusão", 500);
     if (delivery.warehouseId) {
       await restoreDeliveryStock(tx, companyId, delivery.warehouseId, id, actorId, delivery.quantity, delivery.quantity);
@@ -524,10 +559,11 @@ export async function confirmReceipt(companyId: string, deliveryId: string, _: F
   return mutate(companyId, hasPersonalEquipment, async (tx, scope, actorId) => {
     const delivery = await tx.delivery.findUnique({
       where: { companyId_id: { companyId, id: deliveryId }, employeeId: ownEmployeeId(scope), voidedAt: null },
-      select: { receipt: { select: { deliveryId: true } } },
+      select: { receipt: { select: { deliveryId: true } }, quantity: true, returnedQuantity: true },
     });
     if (!delivery) return invalid("Esta entrega não está no seu histórico pessoal.");
     if (delivery.receipt) return;
+    if (delivery.returnedQuantity === delivery.quantity) return invalid("Esta entrega já foi devolvida para descarte.");
     const confirmedAt = new Date();
     await tx.deliveryReceipt.create({ data: { companyId, deliveryId, actorId, confirmedAt } });
     await tx.equipmentEvent.create({ data: { companyId, subjectId: deliveryId, actorId, kind: "RECEIPT_CONFIRMED", occurredAt: confirmedAt } });

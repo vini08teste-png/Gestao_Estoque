@@ -24,6 +24,11 @@ export function latestByItem<T extends { equipmentId: string }>(deliveries: T[])
   });
 }
 
+export function itemsInUse<T extends { equipmentId: string; quantity: number; returnedQuantity: number; retirement: object | null }>(deliveries: T[]) {
+  const latest = new Set(latestByItem(deliveries));
+  return deliveries.filter((row) => !row.retirement && row.returnedQuantity < row.quantity && (latest.has(row) || row.returnedQuantity > 0));
+}
+
 const dayFormat = new Intl.DateTimeFormat("pt-BR", { timeZone: "UTC" });
 export const formatDay = (date: Date) => dayFormat.format(date);
 export const inputDay = (date: Date) => date.toISOString().slice(0, 10);

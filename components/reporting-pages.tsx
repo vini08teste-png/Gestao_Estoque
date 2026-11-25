@@ -2,17 +2,20 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { saveAlertDays } from "@/app/organization-actions";
 import { ActionForm } from "@/components/action-form";
+import { Brand } from "@/components/brand";
+import { PrintReportActions, ReportTypeSelect } from "@/components/report-controls";
 import { Icon } from "@/components/icon";
 import { canAdminister, type AccessScope } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { employeesWhere } from "@/lib/directory";
 import { deliveriesAwaitingReceipt, hasPersonalEquipment } from "@/lib/equipment-access";
 import { formatDay, inputDay, plusDays, requestLabels, todayInBrazil } from "@/lib/equipment";
-import { roles } from "@/lib/organization";
+import { isCompany, roles } from "@/lib/organization";
 import { defaultStockMinimum, stockAlerts, stockDemand } from "@/lib/stock-availability";
 import {
   alertKind, alertLabels, canViewReports, deadlineStatus, listDeadlines, openRequestStatuses,
-  reportFilters, reportKind, reportLabels, reportRows, reportingUnits, unitDeliveryWhere, unitRequestWhere,
+  individualReport, individualReportLabel, individualReportRows, reportFilters, reportKind, reportLabels, reportRows,
+  reportingEmployees, reportingUnits, unitDeliveryWhere, unitRequestWhere,
   type AlertKind, type Deadline, type Query,
 } from "@/lib/reporting";
 
@@ -287,42 +290,100 @@ export async function Alerts({ scope, query }: { scope: AccessScope; query: Quer
   </>;
 }
 
+const reportColumnLines: Record<string, [string, string]> = {
+  "Unidade de medida": ["Unidade", "de medida"],
+  "Número do contrato": ["Número", "do contrato"],
+  "Data de entrega": ["Data de", "entrega"],
+  "Data de devolução": ["Data de", "devolução"],
+  "Rubrica de entrega": ["Rubrica de", "entrega"],
+  "Rubrica de devolução": ["Rubrica de", "devolução"],
+};
+const reportCompactColumns = new Set([
+  "Quantidade", "Unidade de medida", "Nº do CA", "Número do contrato", "Data", "Prazo", "Data de entrega", "Data de devolução",
+]);
+
+function ReportTable({ data, label, sheet = false }: {
+  data: Awaited<ReturnType<typeof reportRows>>; label: string; sheet?: boolean;
+}) {
+  if (!data.rows.length) return <p className="empty">Nenhum registro para estes filtros.</p>;
+  return <div className="table-scroll" role="region" tabIndex={0} aria-label={`Tabela de ${label}`}>
+    <table className="report-table" aria-label={label}>
+      <thead><tr>{data.columns.map((column) => {
+        const lines = reportColumnLines[column];
+        return <th key={column} scope="col" data-column={column}>
+          {lines ? <>{lines[0]} <br />{lines[1]}</> : column}
+        </th>;
+      })}</tr></thead>
+      <tbody>{(sheet ? data.rows : data.rows.slice(0, 200)).map((row, index) => <tr key={index}>{row.map((cell, position) => {
+        const column = data.columns[position];
+        return <td key={column} data-column={column} className={reportCompactColumns.has(column) ? "report-compact-value" : undefined}>
+          {typeof cell === "object" ? <><strong>{cell.name}</strong><small>Matrícula {cell.registration}</small></> :
+            cell === "" && !sheet ? "—" : cell}
+        </td>;
+      })}</tr>)}</tbody>
+    </table>
+  </div>;
+}
+
 export async function Reports({ scope, query }: { scope: AccessScope; query: Query }) {
   if (!canViewReports(scope)) notFound();
-  const units = await reportingUnits(scope);
+  const individual = query.tipo === individualReport;
   const kind = reportKind(query);
+  const [units, employees] = await Promise.all([reportingUnits(scope), individual ? reportingEmployees(scope) : []]);
   const filters = reportFilters(query, units);
-  const { unit, begin, end, error } = filters;
+  const { unit, begin, end } = filters;
+  const selectedEmployee = typeof query.colaborador === "string" ? query.colaborador : "";
+  const people = employees.filter((employee) => !unit || employee.unitId === unit);
+  const employee = people.find(({ id }) => id === selectedEmployee);
+  const error = filters.error ?? (individual && selectedEmployee && !employees.some(({ id }) => id === selectedEmployee) ?
+    "O colaborador não está disponível no seu escopo." : undefined);
   const base = `/${scope.companyId}/relatorios`;
   const download = `/exportar/${scope.companyId}` + params({
     tipo: kind, unidade: unit, inicio: begin ? inputDay(begin) : "", fim: end ? inputDay(end) : "",
   });
-  const data = error ? null : await reportRows(scope, kind, filters);
+  const data = error || individual ? null : await reportRows(scope, kind, filters);
+  const sheet = !error && individual && employee ? await individualReportRows(scope, filters, employee.id) : null;
+  const period = begin && end ? `${formatDay(begin)} a ${formatDay(end)}` :
+    begin ? `A partir de ${formatDay(begin)}` : end ? `Até ${formatDay(end)}` : "Todos os registros";
   return <>
     <header className="page-heading"><div><h1>Relatórios</h1><p>{scope.company.name}</p></div>
       {data && <a className="button primary" href={download}>Exportar CSV</a>}
+      {sheet && <PrintReportActions />}
     </header>
-    <form action={base} className="filters">
-      <label className="field">Relatório<select name="tipo" defaultValue={kind}>
-        {Object.entries(reportLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-      </select></label>
+    <form action={base} className="filters report-filters">
+      <ReportTypeSelect key={individual ? individualReport : kind} selected={individual ? individualReport : kind}
+        options={[...Object.entries(reportLabels), [individualReport, individualReportLabel]]} individual={individualReport} />
       <UnitSelect units={units} selected={unit} />
       <label className="field">Data inicial<input name="inicio" type="date" defaultValue={begin && inputDay(begin)} /></label>
       <label className="field">Data final<input name="fim" type="date" defaultValue={end && inputDay(end)} /></label>
-      <button className="button" type="submit">Aplicar filtros</button>
+      {individual && <label className="field">Colaborador<select key={employee?.id ?? unit} name="colaborador" defaultValue={employee?.id ?? ""}>
+        <option value="">Selecione um colaborador</option>
+        {people.map((person) => <option key={person.id} value={person.id}>{person.name} · {person.registration}</option>)}
+      </select></label>}
+      <button className="button" type="submit">{individual ? "Gerar ficha" : "Aplicar filtros"}</button>
     </form>
     {error && <p className="feedback error" role="alert">{error}</p>}
-    {kind === "pendencias" && <p className="report-hint">Solicitações em aberto e entregas aguardando confirmação de recebimento.</p>}
-    {kind === "vencimentos" && <p className="report-hint">Sem data final, o relatório usa a janela de alerta da empresa.</p>}
+    {!individual && kind === "pendencias" && <p className="report-hint">Solicitações em aberto e entregas aguardando confirmação de recebimento.</p>}
+    {!individual && kind === "vencimentos" && <p className="report-hint">Sem data final, o relatório usa a janela de alerta da empresa.</p>}
     {data && <section className="panel" aria-label={reportLabels[kind]}>
       <p className="report-count">{data.rows.length} {data.rows.length === 1 ? "registro" : "registros"}
         {data.rows.length > 200 && " · A tela exibe os primeiros 200. O CSV inclui todos os resultados."}</p>
-      {data.rows.length ? <div className="table-scroll" role="region" tabIndex={0} aria-label={reportLabels[kind]}>
-        <table aria-label={reportLabels[kind]}>
-          <thead><tr>{data.columns.map((column) => <th key={column} scope="col">{column}</th>)}</tr></thead>
-          <tbody>{data.rows.slice(0, 200).map((row, index) => <tr key={index}>{row.map((cell, position) => <td key={position}>{cell || (cell === 0 ? 0 : "—")}</td>)}</tr>)}</tbody>
-        </table>
-      </div> : <p className="empty">Nenhum registro para estes filtros.</p>}
+      <ReportTable data={data} label={reportLabels[kind]} />
+    </section>}
+    {individual && !error && !employee && <p className="empty panel">Selecione um colaborador e clique em Gerar ficha.</p>}
+    {sheet && employee && <section className="panel epi-print-sheet" aria-labelledby="epi-sheet-heading">
+      <header className="epi-sheet-heading">
+        {isCompany(scope.companyId) && <Brand company={scope.companyId} variant="color" />}
+        <div><h2 id="epi-sheet-heading">Ficha individual de controle de EPIs</h2><p>{scope.company.name}</p></div>
+      </header>
+      <dl className="epi-sheet-data">
+        {[
+          ["Colaborador", employee.name], ["Matrícula", employee.registration], ["Função", employee.jobTitle],
+          ["Unidade", employee.unit.name], ["Período", period],
+        ].map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}
+      </dl>
+      <ReportTable data={sheet} label={individualReportLabel} sheet />
+      <p className="epi-print-help">Na janela de impressão, selecione <strong>Salvar como PDF</strong> para exportar.</p>
     </section>}
   </>;
 }

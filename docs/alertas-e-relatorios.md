@@ -28,11 +28,14 @@ O vencimento do CA e a validade física do produto são acompanhados separadamen
 
 | Relatório | O que inclui | Data usada no filtro |
 | --- | --- | --- |
-| **Entregas** | Empresa, unidade, almoxarifado quando houver, destinatário, item, quantidade e situação do recebimento. | Data da entrega ou da ficha |
+| **Entregas** | Colaborador e matrícula, quantidade, unidade de medida, especificação, CA, número do contrato, datas de entrega e devolução, empresa, unidade e recebimento. | Data da entrega ou da ficha |
 | **Pendências** | Pedidos em aberto e entregas sem confirmação. | Abertura do pedido ou data da entrega |
 | **Vencimentos** | CA e validade física do produto, com referência e situação. | Data de vencimento |
+| **Ficha individual de EPI** | EPIs entregues ao colaborador selecionado, com campos em branco para rubricas de entrega e devolução. | Data da entrega ou da ficha |
 
 O gestor, o encarregado, o almoxarifado e o administrador podem consultar relatórios no seu escopo. Os filtros por unidade e período se aplicam à tela e ao CSV. O CSV usa UTF-8 e ponto e vírgula como separador.
+
+Para a ficha, selecione **Ficha individual de EPI**, escolha o colaborador e clique em **Gerar ficha**. Os botões de impressão e PDF abrem o diálogo do navegador em A4 paisagem. As datas de devolução aparecem quando registradas. Número do contrato e unidade de medida aparecem em branco quando não há dados cadastrados.
 
 O painel e **Meus itens** destacam recebimentos pendentes de entregas que ainda não foram retiradas de uso. O relatório de **Pendências** inclui entregas sem confirmação pelo registro de recebimento, inclusive quando já existe uma retirada. Use o histórico pessoal para conferir essa situação.
 

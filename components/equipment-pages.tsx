@@ -18,7 +18,7 @@ import { canAdminister, type AccessScope } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { employeesWhere, unitsWhere } from "@/lib/directory";
 import { canSetStockMinimum, deliveriesAwaitingReceipt, deliveryCorrectionFields, handlesStock, hasPersonalEquipment, operationalDeliveryWhere, ownEmployeeId, personalDeliveryWhere, requestWhere } from "@/lib/equipment-access";
-import { brazilDay, formatDay, inputDay, latestByItem, requestLabels, retirementLabels, todayInBrazil } from "@/lib/equipment";
+import { brazilDay, formatDay, inputDay, itemsInUse, latestByItem, requestLabels, retirementLabels, todayInBrazil } from "@/lib/equipment";
 import { inventoryTitle, itemCatalogTitle, operationRequestTab } from "@/lib/organization";
 import { openRequestStatuses, reportFilters, type Query } from "@/lib/reporting";
 import { availableLotWhere, defaultStockMinimum, requestAvailability, stockBalances, stockKey } from "@/lib/stock-availability";
@@ -341,7 +341,9 @@ export async function Requests({ scope, edit, status, sent, queue = "", personal
       ...(status === "aberto" ? { status: { in: [...openRequestStatuses()] } } :
         Object.hasOwn(requestLabels, status) ? { status: status as RequestStatus } : {}) },
     include: { equipment: true, employee: true, unit: true, photo: { select: { requestId: true } },
-      delivery: { select: { id: true, deliveredAt: true, receipt: { select: { confirmedAt: true } }, retirement: { select: { deliveryId: true } } } } },
+      itemReturn: { select: { returnedAt: true, quantity: true } },
+      delivery: { select: { id: true, deliveredAt: true, quantity: true, returnedQuantity: true,
+        receipt: { select: { confirmedAt: true } }, retirement: { select: { deliveryId: true } } } } },
     orderBy: { openedAt: "desc" },
   });
   const catalog = !own && handlesStock(scope) && list.some((row) => row.status === "WAITING_CATALOG") ?
@@ -401,7 +403,7 @@ export async function Requests({ scope, edit, status, sent, queue = "", personal
         </div>
         {own && <RequestProgress status={row.status} available={availability?.ready}
           delivered={row.delivery?.deliveredAt} received={row.delivery?.receipt?.confirmedAt} />}
-        {own && row.delivery && !row.delivery.receipt && <Link className="button primary request-action"
+        {own && row.delivery && !row.delivery.receipt && row.delivery.returnedQuantity < row.delivery.quantity && <Link className="button primary request-action"
           href={`/${companyId}/meus-epis${row.delivery.retirement ? "" : "#entrega-" + row.delivery.id}`}>Ir para confirmação</Link>}
         {!own && availability && <p className="request-availability">
           <span className={`badge ${availability.tone}`}>{availability.label}</span>
@@ -411,6 +413,7 @@ export async function Requests({ scope, edit, status, sent, queue = "", personal
           <Link className="button primary request-action" href={`/${companyId}/entregas?solicitacao=${row.id}`}>Atender pedido</Link>}
         <details className="record-details"><summary>Ver detalhes</summary>
           {row.replacementForId && <p><strong>Solicitação de troca</strong></p>}
+          {row.itemReturn && <p>Devolvido para descarte em {formatDay(row.itemReturn.returnedAt)} · {row.itemReturn.quantity} un.</p>}
           {row.reason && <p>{row.reason}</p>}
           {photoUrl && <div className="replacement-photo">
             <img src={photoUrl} alt="Foto enviada como justificativa da troca" loading="lazy" />
@@ -518,7 +521,8 @@ export async function Deliveries({ scope, create, requestId, registered, paper =
     if (paper && requestId) notFound();
     const request = requestId ? await db.equipmentRequest.findFirst({
       where: { ...requestWhere(scope), id: requestId, status: "WAITING_DELIVERY" },
-      include: { employee: true, equipment: true },
+      include: { employee: true, equipment: true, itemReturn: { select: { returnedAt: true } },
+        replacementFor: { select: { deliveredAt: true, equipment: { select: { name: true } } } } },
     }) : null;
     if (requestId && (!request || !request.equipment)) notFound();
     const today = todayInBrazil();
@@ -562,6 +566,10 @@ export async function Deliveries({ scope, create, requestId, registered, paper =
             paper={paper} employeeId={employeeId} today={inputDay(today)} request={request ? {
             name: request.employee.name, equipment: request.equipment!.name, unitId: request.unitId,
             quantity: request.quantity, minDate: inputDay(brazilDay(request.openedAt)),
+            itemReturn: request.replacementFor ? {
+              equipment: request.replacementFor.equipment.name, earliest: inputDay(request.replacementFor.deliveredAt),
+              recordedDate: request.itemReturn ? inputDay(request.itemReturn.returnedAt) : undefined,
+            } : undefined,
           } : undefined} />
         </ActionForm>
       </Editor> : <section className="panel"><p className="empty">{request ?
@@ -581,6 +589,7 @@ export async function Deliveries({ scope, create, requestId, registered, paper =
       proof: { select: { deliveryId: true } },
       receipt: { select: { confirmedAt: true } },
       retirement: { select: { reason: true, note: true, retiredAt: true } },
+      returns: { select: { requestId: true, returnedAt: true, quantity: true }, orderBy: { returnedAt: "asc" } },
       replacementRequests: { where: { status: { in: ["WAITING_CATALOG", "PENDING_APPROVAL", "WAITING_DELIVERY"] } },
         select: { id: true }, take: 1 },
     },
@@ -589,32 +598,36 @@ export async function Deliveries({ scope, create, requestId, registered, paper =
   const personalRows = own ? rows : [];
   const latest = latestByItem(personalRows);
   const latestIds = new Set(latest.map((row) => row.id));
-  const confirmed = latestByItem(personalRows.filter((row) => row.receipt || !row.warehouseId));
-  const current = confirmed.filter((row) => !row.retirement);
-  const pending = personalRows.filter((row) => row.warehouseId && !row.receipt && !row.retirement);
+  const confirmedRows = personalRows.filter((row) => row.receipt || !row.warehouseId);
+  const confirmed = latestByItem(confirmedRows);
+  const current = itemsInUse(confirmedRows);
+  const pending = personalRows.filter((row) => row.warehouseId && !row.receipt && !row.retirement && row.returnedQuantity < row.quantity);
   const pendingIds = new Set(pending.map((row) => row.id));
   const outOfUse = [...latest, ...confirmed.filter((row) => !latestIds.has(row.id))].filter((row) => row.retirement);
   const today = todayInBrazil();
   const replacement = (row: (typeof rows)[number]) => row.replacementRequests.length ?
-    <Link className="text-action" href={`/${companyId}/minhas-solicitacoes`}>Troca solicitada</Link> :
+    <Link className="text-action" href={`/${companyId}/minhas-solicitacoes`}>Troca solicitada</Link> : row.returnedQuantity >= row.quantity ? null :
     <details className="record-details personal-item-action">
       <summary>Solicitar troca</summary>
       <ActionForm action={requestReplacement.bind(null, companyId, row.id, randomUUID())} label="Enviar pedido de troca">
-        <label className="field">Quantidade<input name="quantity" type="number" min={1} max={1_000_000} defaultValue={row.quantity} required /></label>
+        <label className="field">Quantidade<input name="quantity" type="number" min={1}
+          max={row.quantity - row.returnedQuantity} defaultValue={row.quantity - row.returnedQuantity} required /></label>
         <p>Descreva o motivo da troca, anexe uma foto ou envie os dois.</p>
+        <p>Entregue o item antigo ao almoxarifado para descarte ao receber a substituição.</p>
         <label className="field">Justificativa da troca<textarea name="reason" rows={2} maxLength={500} /></label>
         <ReplacementPhotoField />
       </ActionForm>
     </details>;
   const receiptCell = (row: (typeof rows)[number], canConfirm: boolean) => row.receipt ?
     <span className="badge active">Confirmado em {dateTimeInBrazil.format(row.receipt.confirmedAt)}</span> :
+    row.returnedQuantity === row.quantity ? "Devolvido para descarte" :
     !row.warehouseId ? <span className="badge">Entrega anterior</span> :
     canConfirm ? <ActionForm action={confirmReceipt.bind(null, companyId, row.id)} label="Confirmo que recebi" /> : "Aguardando confirmação";
   const itemCard = (row: (typeof rows)[number], allowActions: boolean) =>
     <article className={`panel personal-equipment-card${pendingIds.has(row.id) ? " awaiting-receipt" : ""}`} key={row.id} id={`entrega-${row.id}`}>
       <h3>{row.equipment.name}</h3>
       <dl>
-        <div><dt>Quantidade</dt><dd>{row.quantity}</dd></div>
+        <div><dt>Quantidade</dt><dd>{row.quantity - row.returnedQuantity}</dd></div>
         <div><dt>Data da entrega</dt><dd>{formatDay(row.deliveredAt)}</dd></div>
         {row.stock?.lot.expiresAt && <div><dt>Validade do produto</dt><dd>
           {formatDay(row.stock.lot.expiresAt)} {row.stock.lot.expiresAt < today && <span className="badge deadline-danger">Vencido</span>}
@@ -694,13 +707,17 @@ export async function Deliveries({ scope, create, requestId, registered, paper =
         <time className="delivery-day" dateTime={row.createdAt.toISOString()}>{dateTimeInBrazil.format(row.createdAt)}</time>,
         row.actor.scopes[0]?.name ?? "—",
         receiptCell(row, own && !pendingIds.has(row.id)),
-        row.retirement ? <details className="record-details"><summary>Retirado de uso</summary>
-          <p>{retirementLabels[row.retirement.reason]} · {dateTimeInBrazil.format(row.retirement.retiredAt)}</p><p>{row.retirement.note}</p>
-        </details> : "—",
+        row.retirement || row.returns.length ? <div>
+          {row.returns.map((entry) => <p key={entry.requestId}>{entry.quantity} un. para descarte em
+            {" "}<time dateTime={inputDay(entry.returnedAt)}>{formatDay(entry.returnedAt)}</time></p>)}
+          {row.retirement && <details className="record-details"><summary>Retirado de uso</summary>
+            <p>{retirementLabels[row.retirement.reason]} · {dateTimeInBrazil.format(row.retirement.retiredAt)}</p><p>{row.retirement.note}</p>
+          </details>}
+        </div> : "—",
         row.proof ? <a className="text-action" href={`/comprovantes/${companyId}/${row.id}`}>Baixar</a> : "—",
         ...(admin ? [<div className="row-actions">
           <Link className="text-action" href={`${root}?edit=${encodeURIComponent(row.id)}`}>Editar</Link>
-          <Link className="text-action danger" href={`${root}?apagar=${encodeURIComponent(row.id)}`}>Apagar</Link>
+          {row.returnedQuantity === 0 && <Link className="text-action danger" href={`${root}?apagar=${encodeURIComponent(row.id)}`}>Apagar</Link>}
         </div>] : [])])} />
   </>;
 }

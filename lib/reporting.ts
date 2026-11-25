@@ -2,7 +2,7 @@ import "server-only";
 import type { Prisma } from "@/generated/prisma/client";
 import type { AccessScope } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { unitsWhere } from "@/lib/directory";
+import { employeesWhere, unitsWhere } from "@/lib/directory";
 import { deliveriesAwaitingReceipt, operationalDeliveryWhere, ownEmployeeId, personalDeliveryWhere, requestWhere } from "@/lib/equipment-access";
 import { brazilDay, formatDay, plusDays, requestLabels, todayInBrazil } from "@/lib/equipment";
 
@@ -16,11 +16,14 @@ export const reportLabels = {
   pendencias: "Pendências",
   vencimentos: "Vencimentos",
 };
+export const individualReport = "ficha";
+export const individualReportLabel = "Ficha individual de EPI";
 
 export type AlertKind = keyof typeof alertLabels;
 export type ReportKind = keyof typeof reportLabels;
 export type Query = Record<string, string | string[] | undefined>;
-type Cell = string | number;
+type ReportPerson = { name: string; registration: string };
+type Cell = string | number | ReportPerson;
 type Table = { columns: string[]; rows: Cell[][] };
 
 export type Deadline = {
@@ -43,6 +46,16 @@ export const reportingUnits = (scope: AccessScope) => db.unit.findMany({
   orderBy: { name: "asc" },
   select: { id: true, name: true },
 });
+
+export const reportingEmployees = (scope: AccessScope) => db.employee.findMany({
+  where: employeesWhere(scope),
+  select: { id: true, name: true, registration: true, jobTitle: true, unitId: true, unit: { select: { name: true } } },
+  orderBy: [{ name: "asc" }, { registration: "asc" }],
+});
+
+export const deliveryReportColumns = [
+  "Quantidade", "Unidade de medida", "Especificação do EPI", "Nº do CA", "Número do contrato", "Data de entrega", "Data de devolução",
+] as const;
 
 export function alertKind(query: Query): AlertKind | undefined {
   return typeof query.tipo === "string" && Object.hasOwn(alertLabels, query.tipo) ? query.tipo as AlertKind : undefined;
@@ -130,6 +143,40 @@ export async function listDeadlines(scope: AccessScope, {
   return result.sort((a, b) => a.due.getTime() - b.due.getTime() || a.equipment.localeCompare(b.equipment, "pt-BR"));
 }
 
+function deliveredItems(scope: AccessScope, filters: Filters, kind: ReportKind | typeof individualReport, employeeId?: string) {
+  return db.delivery.findMany({
+    where: { AND: [
+      unitDeliveryWhere(scope, filters.unit), { deliveredAt: { gte: filters.begin, lte: filters.end } },
+      ...(kind === "pendencias" ? [deliveriesAwaitingReceipt] : []),
+      ...(kind === individualReport ? [{ employeeId, equipment: { category: "EPI" as const } }] : []),
+    ] },
+    select: {
+      deliveredAt: true, quantity: true, returnedQuantity: true,
+      employee: { select: { name: true, registration: true, unit: { select: { name: true } } } },
+      equipment: { select: { name: true, certificate: true } },
+      stock: { select: { warehouse: { select: { unit: { select: { name: true } } } } } },
+      receipt: { select: { confirmedAt: true } },
+      returns: { select: { returnedAt: true }, orderBy: { returnedAt: "asc" } },
+    },
+    orderBy: [{ deliveredAt: "desc" }, { id: "desc" }],
+  });
+}
+
+function deliveryCells(row: Awaited<ReturnType<typeof deliveredItems>>[number]) {
+  const dates = [...new Set(row.returns.map(({ returnedAt }) => formatDay(returnedAt)))];
+  return [row.quantity, "", row.equipment.name, row.equipment.certificate ?? "", "", formatDay(row.deliveredAt), dates.join("\n")] as const;
+}
+
+export async function individualReportRows(scope: AccessScope, filters: Filters, employeeId: string): Promise<Table> {
+  const [quantity, measure, item, ca, contract, delivery, returned] = deliveryReportColumns;
+  const columns = [quantity, measure, item, ca, contract, delivery, "Rubrica de entrega", returned, "Rubrica de devolução"];
+  const rows = await deliveredItems(scope, filters, individualReport, employeeId);
+  return { columns, rows: rows.map((row) => {
+    const [quantity, measure, item, ca, contract, delivery, returned] = deliveryCells(row);
+    return [quantity, measure, item, ca, contract, delivery, "", returned, ""];
+  }) };
+}
+
 export async function reportRows(scope: AccessScope, kind: ReportKind, filters: Filters): Promise<Table> {
   const { unit, begin, end } = filters;
   const company = scope.company.name;
@@ -147,26 +194,13 @@ export async function reportRows(scope: AccessScope, kind: ReportKind, filters: 
     };
   }
 
-  const access = unitDeliveryWhere(scope, unit);
-  const deliveries = await db.delivery.findMany({
-    where: {
-      AND: [access, { deliveredAt: { gte: begin, lte: end } }, ...(kind === "pendencias" ? [deliveriesAwaitingReceipt] : [])],
-    },
-    select: {
-      deliveredAt: true, quantity: true,
-      employee: { select: { name: true, registration: true, unit: { select: { name: true } } } },
-      equipment: { select: { name: true } },
-      stock: { select: { warehouse: { select: { name: true, unit: { select: { name: true } } } } } },
-      receipt: { select: { confirmedAt: true } },
-    },
-    orderBy: [{ deliveredAt: "desc" }, { id: "desc" }],
-  });
+  const deliveries = await deliveredItems(scope, filters, kind);
   if (kind === "entregas") return {
-    columns: ["Empresa", "Unidade", "Almoxarifado", "Matrícula", "Colaborador", "Item", "Quantidade", "Data", "Recebimento"],
+    columns: ["Colaborador", ...deliveryReportColumns, "Empresa", "Unidade", "Recebimento"],
     rows: deliveries.map((row) => [
-      company, row.stock?.warehouse.unit.name ?? row.employee.unit.name, row.stock?.warehouse.name ?? "—", row.employee.registration, row.employee.name,
-      row.equipment.name, row.quantity, formatDay(row.deliveredAt),
-      !row.stock ? "Entrega anterior" : row.receipt ? "Confirmado" : "Aguardando confirmação",
+      row.employee, ...deliveryCells(row), company, row.stock?.warehouse.unit.name ?? row.employee.unit.name,
+      row.returnedQuantity === row.quantity ? "Devolvido para descarte" :
+        !row.stock ? "Entrega anterior" : row.receipt ? "Confirmado" : "Aguardando confirmação",
     ]),
   };
 
@@ -187,16 +221,16 @@ export async function reportRows(scope: AccessScope, kind: ReportKind, filters: 
     })),
   ];
   return {
-    columns: ["Empresa", "Unidade", "Tipo", "Matrícula", "Colaborador", "Item", "Quantidade", "Data", "Situação"],
+    columns: ["Empresa", "Unidade", "Tipo", "Colaborador", "Item", "Quantidade", "Data", "Situação"],
     rows: pending.filter((row) => inPeriod(row.date)).sort((a, b) => b.date.getTime() - a.date.getTime()).map((row) => [
-      company, row.unit, row.type, row.employee.registration, row.employee.name, row.equipment, row.quantity, formatDay(row.date), row.status,
+      company, row.unit, row.type, row.employee, row.equipment, row.quantity, formatDay(row.date), row.status,
     ]),
   };
 }
 
 function csvCell(value: Cell) {
-  const text = String(value);
-  const protectedText = typeof value === "string" && (/^[\t\r\n]/.test(text) || /^[=+@-]/.test(text.trimStart())) ? "'" + text : text;
+  const text = typeof value === "object" ? `${value.name} · ${value.registration}` : String(value);
+  const protectedText = typeof value !== "number" && (/^[\t\r\n]/.test(text) || /^[=+@-]/.test(text.trimStart())) ? "'" + text : text;
   return '"' + protectedText.replace(/"/g, '""') + '"';
 }
 

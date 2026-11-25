@@ -15,7 +15,8 @@ export function DeliveryFields({ people, warehouses, stocks, items, today, reque
   stocks: StockOption[];
   items: Item[];
   today: string;
-  request?: { name: string; equipment: string; quantity: number; unitId: string; minDate: string };
+  request?: { name: string; equipment: string; quantity: number; unitId: string; minDate: string;
+    itemReturn?: { equipment: string; earliest: string; recordedDate?: string } };
   paper: boolean;
   employeeId: string;
 }) {
@@ -23,6 +24,7 @@ export function DeliveryFields({ people, warehouses, stocks, items, today, reque
   const [selectedWarehouse, setWarehouse] = useState("");
   const [selectedItem, setItem] = useState("");
   const [originalDate, setOriginalDate] = useState("");
+  const [deliveryDate, setDeliveryDate] = useState(today);
   const personFieldId = useId();
   const warehouseFieldId = useId();
   const itemFieldId = useId();
@@ -78,9 +80,20 @@ export function DeliveryFields({ people, warehouses, stocks, items, today, reque
       {!request && <label className="field">Quantidade<input name="quantity" type="number" min={1}
         max={Math.min(quantityAvailable ?? 1_000_000, 1_000_000)} defaultValue={1} required /></label>}
       <label className="field">Data da entrega<input name="deliveredAt" type="date"
-        {...(paper ? { value: originalDate, onChange: (event) => setOriginalDate(event.target.value) } : { defaultValue: today })}
+        {...(paper ? { value: originalDate, onChange: (event) => setOriginalDate(event.target.value) } :
+          request?.itemReturn ? { value: deliveryDate, onChange: (event) => setDeliveryDate(event.target.value) } : { defaultValue: today })}
         min={request?.minDate} max={today} required /></label>
     </div>
+    {request?.itemReturn && <fieldset className="inline-item-fields">
+      <legend>Devolução para descarte</legend>
+      <p>{request.itemReturn.equipment} · {request.quantity} un.</p>
+      {request.itemReturn.recordedDate ? <p>Recebido para descarte em <time dateTime={request.itemReturn.recordedDate}>
+        {request.itemReturn.recordedDate.split("-").reverse().join("/")}</time>.</p> :
+        <label className="field">Data da devolução
+          <input name="returnedAt" type="date" min={request.itemReturn.earliest} max={deliveryDate || today} required />
+          <small>Preencha após receber o item antigo para descarte.</small>
+        </label>}
+    </fieldset>}
     <DeliveryProofField />
   </>;
 }

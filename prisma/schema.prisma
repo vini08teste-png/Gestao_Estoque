@@ -83,6 +83,7 @@ model User {
   events      EquipmentEvent[]
   receipts    DeliveryReceipt[]
   retirements DeliveryRetirement[]
+  deliveryReturns DeliveryReturn[]
 }
 
 model UserScope {
@@ -290,6 +291,7 @@ model EquipmentRequest {
   equipment   Equipment? @relation(fields: [companyId, equipmentId], references: [companyId, id], onDelete: Restrict)
   delivery    Delivery?
   replacementFor Delivery? @relation("ReplacementFor", fields: [companyId, replacementForId], references: [companyId, id], onDelete: Restrict)
+  itemReturn DeliveryReturn?
   photo       ReplacementPhoto?
 
   @@id([companyId, id])
@@ -308,6 +310,7 @@ model Delivery {
   actorId        String
   requestId      String?
   quantity       Int
+  returnedQuantity Int @default(0)
   deliveredAt    DateTime @db.Date
   suggestedAt    DateTime? @db.Date
   replacementAt  DateTime? @db.Date
@@ -323,11 +326,28 @@ model Delivery {
   proof          DeliveryProof?
   receipt        DeliveryReceipt?
   retirement     DeliveryRetirement?
+  returns        DeliveryReturn[]
   replacementRequests EquipmentRequest[] @relation("ReplacementFor")
 
   @@id([companyId, id])
   @@unique([companyId, requestId])
   @@index([companyId, employeeId, equipmentId, deliveredAt, createdAt])
+}
+
+model DeliveryReturn {
+  companyId String
+  requestId String
+  deliveryId String
+  actorId String
+  quantity Int
+  returnedAt DateTime @db.Date
+  recordedAt DateTime @default(now())
+  request EquipmentRequest @relation(fields: [companyId, requestId], references: [companyId, id], onDelete: Restrict)
+  delivery Delivery @relation(fields: [companyId, deliveryId], references: [companyId, id], onDelete: Restrict)
+  actor User @relation(fields: [actorId], references: [id], onDelete: Restrict)
+
+  @@id([companyId, requestId])
+  @@index([companyId, deliveryId])
 }
 
 model DeliveryRetirement {
