@@ -8,6 +8,7 @@ import {
 } from "@/app/equipment-actions";
 import { ActionForm } from "@/components/action-form";
 import { DeliveryFields } from "@/components/delivery-fields";
+import { DeliveryProofField } from "@/components/delivery-proof-field";
 import { EquipmentPicker } from "@/components/equipment-picker";
 import { ItemCategoryFields } from "@/components/item-category-fields";
 import { RequestEquipmentField } from "@/components/request-equipment-field";
@@ -493,9 +494,7 @@ async function DeliveryCorrection({ scope, id, remove }: { scope: AccessScope; i
         {!fields.quantity && <p>A quantidade está vinculada a uma solicitação, troca ou retirada de uso.</p>}
         {fields.quantity && row.warehouseId && <p>Alterar a quantidade ajusta o saldo do almoxarifado.
           {row.receipt && " O colaborador precisará confirmar o recebimento da quantidade corrigida."}</p>}
-        <label className="field">Comprovante (opcional)<input type="file" name="proof" accept="application/pdf,image/png,image/jpeg" />
-          <small>{row.proof ? "Anexe um arquivo para substituir o comprovante atual." : "PDF, PNG ou JPEG de até 3 MB."}</small>
-        </label>
+        <DeliveryProofField replacing={Boolean(row.proof)} />
         <label className="field">Motivo da correção<textarea name="note" rows={3} maxLength={500} required /></label>
       </ActionForm>}
     </Editor>

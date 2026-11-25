@@ -28,7 +28,7 @@ A disponibilidade é consultada quando a tela carrega. O estoque só é baixado 
 - Para atender um pedido, use **Solicitações → Pronto para entregar → Atender pedido**. O sistema preenche o destinatário, o item, a quantidade e a data sugerida. Se houver um único almoxarifado com saldo suficiente, ele já vem selecionado.
 - Para entregar diretamente, abra **Histórico → Nova entrega**, selecione o colaborador, o almoxarifado e o item. Informe a quantidade.
 - Preencha a data. Ela pode ser de hoje ou anterior. Para pedidos, também precisa ser igual ou posterior à abertura do pedido.
-- Se houver comprovante, anexe PDF, PNG ou JPG de até **3 MB**. O anexo é opcional.
+- Em **Comprovante (opcional)**, use **Tirar foto** para capturar a evidência pela câmera ou **Anexar comprovante** para escolher um PDF, PNG ou JPG de até **3 MB**. Confira a prévia antes de salvar.
 - Clique em **Confirmar entrega**. O sistema usa o saldo disponível do almoxarifado selecionado e prioriza as unidades com validade mais próxima.
 
 Em uma transação, o sistema dá baixa no saldo, registra a entrega, grava a movimentação e conclui o pedido, quando vinculado. Se alguma operação falhar, o conjunto é desfeito. Uma verificação no momento da baixa impede saldo negativo se dois operadores tentarem usar as últimas unidades.

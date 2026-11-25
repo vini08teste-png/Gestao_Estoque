@@ -1,6 +1,7 @@
 "use client";
 
 import { useId, useState } from "react";
+import { DeliveryProofField } from "@/components/delivery-proof-field";
 import { EquipmentPicker } from "@/components/equipment-picker";
 
 type Person = { id: string; name: string; unitId: string; unit: { name: string } };
@@ -25,7 +26,6 @@ export function DeliveryFields({ people, warehouses, stocks, items, today, reque
   const personFieldId = useId();
   const warehouseFieldId = useId();
   const itemFieldId = useId();
-  const proofId = useId();
   const unit = request?.unitId ?? people.find(({ id }) => id === person)?.unitId;
   const unitWarehouses = warehouses.filter(({ unitId }) => unitId === unit);
   const warehouseBalances = new Map(stocks.map(({ warehouseId, quantity }) => [warehouseId, quantity]));
@@ -81,13 +81,6 @@ export function DeliveryFields({ people, warehouses, stocks, items, today, reque
         {...(paper ? { value: originalDate, onChange: (event) => setOriginalDate(event.target.value) } : { defaultValue: today })}
         min={request?.minDate} max={today} required /></label>
     </div>
-    <details className="record-details delivery-proof">
-      <summary>Comprovante (opcional)</summary>
-      <div className="field">
-        <label htmlFor={proofId}>Comprovante</label>
-        <input id={proofId} name="proof" type="file" accept="application/pdf,image/png,image/jpeg" aria-describedby={proofId + "-help"} />
-        <small id={proofId + "-help"}>PDF, PNG ou JPEG de até 3 MB.</small>
-      </div>
-    </details>
+    <DeliveryProofField />
   </>;
 }

@@ -199,6 +199,8 @@ button:disabled { cursor: wait; opacity: .68; }
 .delivery-summary dt { color: var(--muted); font-size: .8125rem; }
 .delivery-summary dd { font-weight: 700; }
 .delivery-proof .field { margin-top: 8px; }
+.proof-camera { display: grid; gap: 8px; justify-items: start; }
+.proof-camera video { width: min(100%, 420px); min-height: 100px; border-radius: 8px; background: var(--sidebar); }
 .personal-equipment-card.awaiting-receipt { scroll-margin-top: 16px; }
 .catalog-alternative { justify-self: start; cursor: pointer; padding: 6px 0; }
 .request-list, .team-list { display: grid; gap: 10px; }

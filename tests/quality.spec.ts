@@ -861,3 +861,43 @@ test("filtra e ordena o Histórico dentro da unidade autorizada", async ({ page 
   await expect(page).toHaveURL(/\/entregas$/);
   await expect(rows).toHaveCount(2);
 });
+
+test("captura, revisa e salva uma foto como comprovante de entrega", async ({ page }) => {
+  await page.addInitScript(() => {
+    navigator.mediaDevices.getUserMedia = async () => {
+      const canvas = document.createElement("canvas");
+      const context = canvas.getContext("2d")!;
+      const stream = canvas.captureStream(10);
+      const refresh = window.setInterval(() => {
+        if (!stream.active) { window.clearInterval(refresh); return; }
+        context.fillStyle = "teal";
+        context.fillRect(0, 0, canvas.width, canvas.height);
+      }, 50);
+      return stream;
+    };
+  });
+  await signIn(page, scenario.manager);
+  await page.goto(`/tsa/entregas?edit=ficha&colaborador=${scenario.worker.id}`);
+  await page.getByRole("combobox", { name: "Item", exact: true }).selectOption(scenario.uniform.item.id);
+  await page.getByLabel("Data da entrega").fill("2025-07-15");
+  await page.getByText("Comprovante (opcional)", { exact: true }).click();
+  const takePhoto = page.getByRole("button", { name: "Tirar foto" });
+  const capture = page.getByRole("button", { name: "Capturar foto" });
+  const preview = page.getByRole("img", { name: "Prévia do comprovante" });
+  await takePhoto.click();
+  await capture.click();
+  await expect(preview).toBeVisible();
+  await page.getByRole("button", { name: "Remover foto" }).click();
+  await expect(preview).toHaveCount(0);
+  await takePhoto.click();
+  await capture.click();
+  await expect(preview).toBeVisible();
+  await page.getByRole("button", { name: "Salvar e continuar" }).click();
+  await expect(page.getByText("Entrega anterior registrada.")).toBeVisible();
+  await expect(preview).toHaveCount(0);
+  const delivery = await db.delivery.findFirstOrThrow({
+    where: { companyId: "tsa", employeeId: scenario.worker.id, deliveredAt: new Date("2025-07-15") }, include: { proof: true },
+  });
+  expect(delivery.proof).toMatchObject({ mime: "image/jpeg", name: "comprovante.jpg" });
+  expect((await page.request.get(`/comprovantes/tsa/${delivery.id}`)).status()).toBe(200);
+});
