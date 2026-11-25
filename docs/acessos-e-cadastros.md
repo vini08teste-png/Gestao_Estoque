@@ -19,7 +19,7 @@ O seletor de empresa aparece para quem está na empresa atual como administrador
 1. Na empresa onde a pessoa atua, abra **Colaboradores → Novo colaborador**. Para gestor, a tela se chama **Equipe**. Para Gerência, **Minha equipe**.
 2. Informe nome, matrícula, unidade, setor e função. A matrícula é única dentro da empresa e é armazenada em maiúsculas.
 3. Em **Empresa**, informe o empregador quando houver terceirização, por exemplo, **LUK**. Se deixar em branco, o sistema mostra **TSA** ou **TSA Lynx** conforme a empresa do cadastro. A busca aceita o nome da empresa.
-4. Selecione o **Responsável da Gerência** da mesma unidade, quando aplicável, e salve. Quando alguém da Gerência faz o cadastro, o sistema vincula o novo integrante à equipe dessa pessoa. O sistema impede vínculos que criariam um ciclo na equipe.
+4. No campo **Gerência**, selecione uma pessoa da mesma unidade, quando aplicável, e salve. Quando alguém da Gerência faz o cadastro, o sistema vincula o novo integrante à equipe dessa pessoa. O sistema impede vínculos que criariam um ciclo na equipe.
 
 O administrador edita registros existentes. Para corrigir a unidade de um cadastro já relacionado a outros registros, confira os vínculos antes de salvar. Alguns vínculos podem impedir a movimentação direta.
 
@@ -31,7 +31,7 @@ O administrador edita registros existentes. Para corrigir a unidade de um cadast
 4. Em perfis **Gestor** e **Operador de estoque**, escolha as unidades autorizadas ou marque **Todas as unidades**. Para **Gerência** e **Colaborador**, o vínculo pessoal é obrigatório e determina a unidade.
 5. Na primeira entrada com senha temporária, a pessoa cria a própria senha e depois entra de novo.
 
-Para cadastrar alguém da **LUK** com o perfil Gerência, informe LUK no cadastro, atribua o perfil **Gerência** no acesso e selecione essa pessoa em **Responsável da Gerência** nos cadastros de sua equipe. Por exemplo, alguém da LUK pode liderar colaboradores da TSA Lynx na unidade onde todos atuam.
+Para cadastrar alguém da **LUK** com o perfil Gerência, informe LUK no cadastro, atribua o perfil **Gerência** no acesso e selecione essa pessoa em **Gerência** nos cadastros de sua equipe. Por exemplo, alguém da LUK pode liderar colaboradores da TSA Lynx na unidade onde todos atuam.
 
 ### Conceder acesso de Gerência como gestor
 
@@ -39,7 +39,7 @@ Para cadastrar alguém da **LUK** com o perfil Gerência, informe LUK no cadastr
 2. Se a pessoa já tiver o perfil **Colaborador** ativo, confirme a alteração. Ela usará o mesmo e-mail e a mesma senha.
 3. Para criar um login, informe um e-mail ainda sem conta e uma senha temporária de 6 a 128 caracteres. Contas com outro perfil ou vínculos preexistentes pelo e-mail passam pela revisão de um administrador.
 
-O acesso segue a unidade do cadastro da pessoa. A equipe direta é definida pelo campo **Responsável da Gerência** nos cadastros dos integrantes.
+O acesso segue a unidade do cadastro da pessoa. A equipe direta é definida pelo campo **Gerência** nos cadastros dos integrantes.
 
 ## Troca e redefinição de senha
 

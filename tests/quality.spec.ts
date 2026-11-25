@@ -578,7 +578,7 @@ test("colaborador terceirizado pode liderar a equipe da unidade onde atua", asyn
   await page.getByLabel("Empresa", { exact: true }).fill("LUK");
   await page.locator('select[name="unit"]').selectOption(scenario.unit.id);
   await page.getByLabel("Setor").fill("Operação");
-  await page.getByLabel("Função").fill("Responsável da Gerência");
+  await page.getByLabel("Função").fill("Gerência");
   await page.getByRole("button", { name: "Salvar", exact: true }).click();
   await expect(page).toHaveURL(/\/colaboradores$/);
   await page.goto("/tsa/colaboradores?q=luk");
@@ -1104,7 +1104,7 @@ test("Equipe filtra pendências e diferencia validades e configuração de itens
   await expect(filters.getByRole("combobox", { name: "Unidade" }).locator(`option[value="${scenario.outsideUnit.id}"]`)).toHaveCount(0);
   await filters.getByRole("combobox", { name: "Unidade" }).selectOption(person.unitId);
   await filters.getByRole("combobox", { name: "Setor" }).selectOption(person.department);
-  await filters.getByRole("combobox", { name: "Responsável da Gerência" }).selectOption(person.supervisorId!);
+  await filters.getByRole("combobox", { name: "Gerência" }).selectOption(person.supervisorId!);
   await filters.getByRole("combobox", { name: "Pendências" }).selectOption("confirmacao");
   await filters.getByRole("button", { name: "Filtrar" }).click();
   const card = page.locator(".team-member");

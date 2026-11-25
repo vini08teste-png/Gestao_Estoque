@@ -160,11 +160,11 @@ async function Employees({ scope, edit, supervisorAccess, query, status, filters
                   <option value="" disabled>Selecione</option>
                   {units.map((unit) => <option key={unit.id} value={unit.id}>{unit.name}{!unit.active ? " (inativa)" : ""}</option>)}
                 </select></label>
-                {scope.role !== "SUPERVISOR" && <label className="field">Responsável da Gerência<select name="supervisor" defaultValue={current?.supervisorId ?? ""}>
-                  <option value="">Sem responsável da Gerência</option>
+                {scope.role !== "SUPERVISOR" && <label className="field">Gerência<select name="supervisor" defaultValue={current?.supervisorId ?? ""}>
+                  <option value="">Sem Gerência</option>
                   {people.map((person) => <option key={person.id} value={person.id}>
                     {person.name} · {employeeCompanyName(scope.company.name, person.contractorCompany)} · {person.unit.name}</option>)}
-                </select><small>Escolha o responsável da Gerência da mesma unidade. A pessoa pode ser de uma empresa terceirizada.</small></label>}
+                </select><small>Escolha uma pessoa da Gerência na mesma unidade. A pessoa pode ser de uma empresa terceirizada.</small></label>}
                 <TextField name="department" label="Setor" value={current?.department} />
                 <TextField name="jobTitle" label="Função" value={current?.jobTitle} />
               </div>
@@ -203,7 +203,7 @@ async function Employees({ scope, edit, supervisorAccess, query, status, filters
         </form>
       )}
       {team ? <TeamOverview scope={scope} people={people} search={query} status={status} filters={filters} /> :
-      <Table label={title} columns={["Matrícula", "Nome", "Empresa", "Unidade", "Setor", "Função", "Responsável da Gerência", "Situação", ...(admin ? ["Ação"] : [])]}
+      <Table label={title} columns={["Matrícula", "Nome", "Empresa", "Unidade", "Setor", "Função", "Gerência", "Situação", ...(admin ? ["Ação"] : [])]}
         rows={people.map((person) => [person.id, person.registration, person.name, employeeCompanyName(scope.company.name, person.contractorCompany), person.unit.name, person.department,
           person.jobTitle, person.supervisor?.name ?? "—", <Status active={person.active} />,
           ...(admin ? [<RowActions id={`employee-actions-${person.id}`} label={`Ações de ${person.name}`}>
@@ -293,7 +293,7 @@ async function Users({ scope, edit, viewerId, profile, employeeId }: {
           <p>Em <strong>Colaboradores</strong>, use <strong>Configurar acesso</strong> na linha da pessoa. Informe o e-mail de login e escolha o perfil.</p>
           <dl>{(["WAREHOUSE", "SUPERVISOR", "MANAGER"] as const).map((role) => <div key={role}>
             <dt>{roles[role]}</dt><dd>{role === "WAREHOUSE" ? "Marque as unidades na edição do acesso."
-              : role === "SUPERVISOR" ? "Selecione a pessoa no campo Responsável da Gerência no cadastro de cada membro da equipe." : "Marque as unidades que o gestor acompanha."}</dd>
+              : role === "SUPERVISOR" ? "Selecione a pessoa no campo Gerência no cadastro de cada membro da equipe." : "Marque as unidades que o gestor acompanha."}</dd>
           </div>)}</dl>
         </div>
       </details>

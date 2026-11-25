@@ -101,7 +101,7 @@ export async function saveEmployee(companyId: string, id: string | null, _: Form
         where: { companyId, unitId }, select: { id: true, supervisorId: true },
       });
       const chain = new Map(people.map((person) => [person.id, person.supervisorId]));
-      if (!chain.has(supervisorId)) throw new FormError("Selecione um responsável da Gerência da mesma unidade.");
+      if (!chain.has(supervisorId)) throw new FormError("Selecione uma pessoa da Gerência na mesma unidade.");
       const seen = new Set(id ? [id] : []);
       for (let cursor: string | null = supervisorId; cursor; cursor = chain.get(cursor) ?? null) {
         if (seen.has(cursor)) throw new FormError("Este vínculo de Gerência criaria um ciclo na equipe.");

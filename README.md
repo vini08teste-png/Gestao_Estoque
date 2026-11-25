@@ -39,7 +39,7 @@ O seletor aparece ao acessar uma empresa como Administrador, desde que a conta t
 
 Todo usuário com um colaborador ativo vinculado tem acesso a **Meus itens** e aos seus pedidos em **Solicitações**. O vínculo pessoal é independente das unidades autorizadas para a operação.
 
-Em **Colaboradores**, um administrador pode abrir **Configurar acesso** para informar o e-mail usado no login, vincular a pessoa e escolher seu perfil. Para **Operador de estoque** e **Gestor**, selecione as unidades autorizadas. Para **Gerência**, indique a pessoa no campo **Responsável da Gerência** do cadastro de cada integrante da equipe.
+Em **Colaboradores**, um administrador pode abrir **Configurar acesso** para informar o e-mail usado no login, vincular a pessoa e escolher seu perfil. Para **Operador de estoque** e **Gestor**, selecione as unidades autorizadas. Para **Gerência**, indique a pessoa no campo **Gerência** do cadastro de cada integrante da equipe.
 
 Para terceiros, informe o empregador em **Empresa**, por exemplo, LUK. O cadastro fica na empresa do grupo e na unidade onde a pessoa atua. O gestor pode conceder o perfil **Gerência** em **Equipe → Dar acesso de Gerência** para colaboradores ativos de suas unidades, inclusive terceirizados.
 

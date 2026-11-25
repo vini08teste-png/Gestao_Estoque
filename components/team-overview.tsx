@@ -77,7 +77,7 @@ export async function TeamOverview({ scope, people, search, status, filters }: {
   const units = sortedValues(people.map((person) => [person.unitId, person.unit.name]));
   const departments = sortedValues(people.map(({ department }) => [department, department]));
   const supervisors = sortedValues(people.flatMap(({ supervisor }) => supervisor ? [[supervisor.id, supervisor.name]] : []));
-  if (people.some(({ supervisor }) => !supervisor)) supervisors.push(["sem-encarregado", "Sem responsável da Gerência"]);
+  if (people.some(({ supervisor }) => !supervisor)) supervisors.push(["sem-encarregado", "Sem Gerência"]);
   const selected = (key: string, options: [string, string][]) =>
     options.find(([id]) => id === filters[key])?.[0] ?? "";
   const unit = selected("unidade", units);
@@ -201,7 +201,7 @@ export async function TeamOverview({ scope, people, search, status, filters }: {
         <div className="team-filter-row">
           <FilterSelect label="Unidade" name="unidade" selected={unit} options={units} placeholder="Todas" />
           <FilterSelect label="Setor" name="setor" selected={department} options={departments} placeholder="Todos" />
-          <FilterSelect label="Responsável da Gerência" name="supervisor" selected={supervisor} options={supervisors} placeholder="Todos" />
+          <FilterSelect label="Gerência" name="supervisor" selected={supervisor} options={supervisors} placeholder="Todos" />
           <FilterSelect label="Situação" name="status" selected={status} options={[["ativo", "Ativo"], ["inativo", "Inativo"]]} placeholder="Todas" />
         </div>
       </details>
@@ -226,7 +226,7 @@ export async function TeamOverview({ scope, people, search, status, filters }: {
           <Icon name="expand_more" />
         </summary>
         <div className="team-member-role">
-          <p>{person.unit.name} · {person.department}{person.supervisor && ` · Responsável da Gerência: ${person.supervisor.name}`}
+          <p>{person.unit.name} · {person.department}{person.supervisor && ` · Gerência: ${person.supervisor.name}`}
             {" · "}{employeeCompanyName(scope.company.name, person.contractorCompany)}{supervisorAccess && " · Perfil Gerência"}</p>
           {person.active && <details className="team-actions">
             <summary className="button" aria-label={`Ações de ${person.name}`} title="Ações"><span aria-hidden="true">⋯</span></summary>

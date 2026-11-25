@@ -39,7 +39,7 @@ O aplicativo usa Next.js com App Router, React e TypeScript. As páginas protegi
 | Entidades | Como se relacionam |
 | --- | --- |
 | `Company`, `Unit`, `Warehouse` | Uma empresa tem unidades. Uma unidade pode ter vários contratos de estoque. |
-| `Employee` | Vincula a pessoa à empresa, à unidade e, quando aplicável, a outro colaborador como responsável da Gerência. A terceirizada é um campo opcional do cadastro. |
+| `Employee` | Vincula a pessoa à empresa, à unidade e, quando aplicável, a outro colaborador no campo Gerência. A terceirizada é um campo opcional do cadastro. |
 | `User`, `UserScope`, `ScopeUnit` | Um e-mail identifica a conta. O vínculo por empresa define perfil, colaborador associado e unidades autorizadas. |
 | `Session`, `LoginAttempt` | Guardam as sessões e as janelas de tentativas de autenticação. |
 | `Equipment`, `EquipmentLot`, `Stock` | Entradas de um item são agrupadas internamente por validade. A chave do saldo inclui empresa, contrato de estoque e lote interno. A tela soma por contrato e item. |
