@@ -4,7 +4,7 @@
 
 O painel apresenta atalhos e indicadores de acordo com o perfil. Quem opera o estoque vê pedidos, entregas ou alertas do seu escopo. O colaborador acompanha os próprios pedidos e os recebimentos a confirmar.
 
-Em **Equipe** ou **Minha equipe**, os indicadores acompanham a busca e o filtro de pendências. Use **Mais filtros** para selecionar unidade, setor, Gerência ou situação do colaborador. Abra o cartão da pessoa e escolha a aba **Em uso**, **A confirmar**, **Pedidos em aberto** ou **Itens esperados**. O menu de três pontos reúne as ações disponíveis. As tabelas distinguem a validade física do equipamento da validade do CA e mostram as datas que estiverem disponíveis.
+Em **Equipe** ou **Minha equipe**, os indicadores acompanham a busca e o filtro de pendências. Use **Mais filtros** para selecionar unidade, contrato, Gerência ou situação do colaborador. Abra o cartão da pessoa e escolha a aba **Em uso**, **A confirmar**, **Pedidos em aberto** ou **Itens esperados**. O menu de três pontos reúne as ações disponíveis. As tabelas distinguem a validade física do equipamento da validade do CA e mostram as datas que estiverem disponíveis.
 
 Em **Itens esperados**, o administrador escolhe o item e a quantidade por função, por unidade ou pela combinação dos dois. Quando várias regras se aplicam à mesma pessoa e ao mesmo item, vale a maior quantidade. Na equipe, Gestor e Gerência veem **Recebido**, **A confirmar** ou quantas unidades faltam. A comparação usa a entrega mais recente em uso e a entrega pendente mais recente, sem somar as duas como se fossem uma única entrega.
 

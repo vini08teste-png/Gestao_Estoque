@@ -571,13 +571,15 @@ test("colaborador terceirizado pode liderar a equipe da unidade onde atua", asyn
   await page.getByLabel("Quantidade").fill("2");
   await page.getByRole("button", { name: "Salvar e continuar" }).click();
   await expect(page.getByRole("status")).toHaveText("Alterações salvas.");
+  await db.warehouse.update({ where: { companyId_id: { companyId, id: scenario.warehouse.id } }, data: { contractNumber: "CTR-CADASTRO" } });
   await page.goto("/tsa/colaboradores?edit=novo");
   await page.getByLabel("Nome completo").fill(name);
   await page.getByLabel("Matrícula").fill(registration);
   await expect(page.getByLabel("Empresa", { exact: true })).toHaveAttribute("placeholder", "TSA");
   await page.getByLabel("Empresa", { exact: true }).fill("LUK");
   await page.locator('select[name="unit"]').selectOption(scenario.unit.id);
-  await page.getByLabel("Setor").fill("Operação");
+  await expect(page.getByLabel("Setor", { exact: true })).toHaveCount(0);
+  await page.getByLabel("Contrato", { exact: true }).selectOption(scenario.warehouse.id);
   await page.getByLabel("Função").fill("Gerência");
   await page.getByRole("button", { name: "Salvar", exact: true }).click();
   await expect(page).toHaveURL(/\/colaboradores$/);
@@ -599,8 +601,10 @@ test("colaborador terceirizado pode liderar a equipe da unidade onde atua", asyn
   await page.getByRole("button", { name: "Salvar e continuar" }).click();
   await expect(page.getByRole("status")).toHaveText("Alterações salvas.");
   const worker = await db.employee.findFirstOrThrow({ where: { companyId, name, contractorCompany: "LUK" } });
+  expect(worker.contractId).toBe(scenario.warehouse.id);
   await page.goto("/tsa/colaboradores");
   await expect(page.getByRole("row").filter({ hasText: name }).getByRole("cell", { name: "LUK", exact: true })).toBeVisible();
+  await expect(page.getByRole("row").filter({ hasText: name }).getByRole("cell", { name: "CTR-CADASTRO", exact: true })).toBeVisible();
   await expect(page.getByRole("row").filter({ hasText: scenario.worker.name }).getByRole("cell", { name: "TSA", exact: true })).toBeVisible();
   const scope = await db.userScope.findFirstOrThrow({ where: { companyId, user: { email } } });
   expect(scope).toMatchObject({ role: "SUPERVISOR", employeeId: worker.id });
@@ -1065,10 +1069,11 @@ test("Equipe filtra pendências e diferencia validades e configuração de itens
     companyId, name: "Gestor do painel de teste", role: "MANAGER", allUnits: false,
     units: { create: [{ unitId: scenario.unit.id }, { unitId: unit.id }] },
   } } } });
+  await db.warehouse.update({ where: { companyId_id: { companyId, id: scenario.warehouse.id } }, data: { contractNumber: "CTR-EQUIPE" } });
   const person = await db.employee.create({ data: {
     companyId, unitId: scenario.unit.id, supervisorId: scenario.worker.supervisorId,
     name: `Pessoa com recebimento ${scenario.tag}`, registration: `F-${scenario.tag}`,
-    department: `Setor filtrado ${scenario.tag}`, jobTitle: "Função sem regra aplicável",
+    contractId: scenario.warehouse.id, jobTitle: "Função sem regra aplicável",
   } });
   const other = await db.employee.create({ data: {
     companyId, unitId: unit.id, name: `Pessoa sem configuração ${scenario.tag}`,
@@ -1103,7 +1108,7 @@ test("Equipe filtra pendências e diferencia validades e configuração de itens
   await filters.locator(".team-extra-filters > summary").click();
   await expect(filters.getByRole("combobox", { name: "Unidade" }).locator(`option[value="${scenario.outsideUnit.id}"]`)).toHaveCount(0);
   await filters.getByRole("combobox", { name: "Unidade" }).selectOption(person.unitId);
-  await filters.getByRole("combobox", { name: "Setor" }).selectOption(person.department);
+  await filters.getByRole("combobox", { name: "Contrato", exact: true }).selectOption(scenario.warehouse.id);
   await filters.getByRole("combobox", { name: "Gerência" }).selectOption(person.supervisorId!);
   await filters.getByRole("combobox", { name: "Pendências" }).selectOption("confirmacao");
   await filters.getByRole("button", { name: "Filtrar" }).click();

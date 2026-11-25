@@ -82,20 +82,28 @@ export async function saveEmployee(companyId: string, id: string | null, _: Form
   const result = await save(companyId, async (tx, _, scope) => {
     const unitId = required(data, "unit", "a unidade");
     const supervisorId = scope.role === "SUPERVISOR" ? scope.employee?.id ?? null : text(data, "supervisor") || null;
+    const contractId = text(data, "contract") || null;
     const contractorCompany = text(data, "contractorCompany");
     if (contractorCompany.length > 120) throw new FormError("Informe o nome da empresa com até 120 caracteres.");
     const values = {
       unitId,
       supervisorId,
+      contractId,
       ...(data.has("contractorCompany") && { contractorCompany: contractorCompany || null }),
       registration: required(data, "registration", "a matrícula", 32).toUpperCase(),
       name: required(data, "name", "o nome"),
-      department: required(data, "department", "o setor"),
       jobTitle: required(data, "jobTitle", "a função"),
       active: data.get("active") === "on",
     };
     const unit = await tx.unit.findFirst({ where: { AND: [unitsWhere(scope), { id: unitId }] } });
     if (!unit) throw new FormError("Selecione uma unidade no seu escopo.");
+    if (contractId && !await tx.warehouse.findFirst({
+      where: { companyId, unitId, id: contractId, OR: [
+        { active: true, contractNumber: { not: null } },
+        ...(id ? [{ employees: { some: { id } } }] : []),
+      ] },
+      select: { id: true },
+    })) throw new FormError("Selecione um contrato ativo da mesma unidade.");
     if (supervisorId) {
       const people = await tx.employee.findMany({
         where: { companyId, unitId }, select: { id: true, supervisorId: true },

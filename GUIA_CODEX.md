@@ -36,7 +36,7 @@ A [documentação do sistema](docs/README.md) detalha o comportamento implementa
 ## 5. Módulos V1
 1. Login e seleção de empresa quando autorizado.
 2. Dashboard por perfil.
-3. Colaboradores: matrícula, nome, empresa do grupo, empresa terceirizada quando houver, unidade, setor, função, Gerência e situação.
+3. Colaboradores: matrícula, nome, empresa do grupo, empresa terceirizada quando houver, unidade, contrato, função, Gerência e situação.
 4. Cadastro de itens: tipo EPI ou uniforme, nome, fabricante/modelo e observações. Para EPI, CA e sua validade, com consulta à base importada do CAEPI.
 5. Estoque: item, validade opcional do produto, quantidade por contrato, entradas e baixas.
 6. Histórico: entregas com baixa e registros de fichas de papel com o saldo preservado. Ambos guardam colaborador, item, quantidade, data, responsável e anexo opcional. A confirmação digital do destinatário se aplica às entregas com baixa.

@@ -5,6 +5,7 @@ import { grantSupervisorAccess, resetUserPassword, saveCompany, saveEmployee, sa
 import { AccessScopeFields } from "@/components/access-scope-fields";
 import { ActionForm } from "@/components/action-form";
 import { Catalog, Deliveries, ExpectedItems, Inventory, Requests, Rules } from "@/components/equipment-pages";
+import { EmployeeContractFields } from "@/components/employee-contract-fields";
 import { Alerts, Dashboard, Reports } from "@/components/reporting-pages";
 import { RowActions } from "@/components/row-actions";
 import { TeamOverview } from "@/components/team-overview";
@@ -133,11 +134,18 @@ async function Employees({ scope, edit, supervisorAccess, query, status, filters
   }
   if (edit) {
     if (!(edit === "novo" ? canCreate : admin)) notFound();
-    const [current, units, people] = await Promise.all([
+    const [current, units, people, contracts] = await Promise.all([
       edit === "novo" ? null : db.employee.findUnique({ where: { companyId_id: { companyId, id: edit } } }),
       db.unit.findMany({ where: unitsWhere(scope), orderBy: { name: "asc" } }),
       scope.role === "SUPERVISOR" ? [] : db.employee.findMany({
         where: { ...employeesWhere(scope), id: { not: edit } }, include: { unit: true }, orderBy: { name: "asc" },
+      }),
+      db.warehouse.findMany({
+        where: { companyId, unit: unitsWhere(scope), OR: [
+          { active: true, contractNumber: { not: null } },
+          ...(edit === "novo" ? [] : [{ employees: { some: { id: edit } } }]),
+        ] },
+        select: { id: true, unitId: true, contractNumber: true }, orderBy: { contractNumber: "asc" },
       }),
     ]);
     if (edit !== "novo" && !current) notFound();
@@ -156,16 +164,12 @@ async function Employees({ scope, edit, supervisorAccess, query, status, filters
                     maxLength={120} placeholder={scope.company.name} aria-describedby="employee-company-help" />
                   <small id="employee-company-help">Deixe em branco para usar {scope.company.name}. Para terceirizados, informe a empresa empregadora, como LUK.</small>
                 </div>
-                <label className="field">Unidade<select name="unit" defaultValue={current?.unitId ?? ""} required>
-                  <option value="" disabled>Selecione</option>
-                  {units.map((unit) => <option key={unit.id} value={unit.id}>{unit.name}{!unit.active ? " (inativa)" : ""}</option>)}
-                </select></label>
+                <EmployeeContractFields units={units} contracts={contracts} initialUnit={current?.unitId ?? ""} initialContract={current?.contractId ?? ""} />
                 {scope.role !== "SUPERVISOR" && <label className="field">Gerência<select name="supervisor" defaultValue={current?.supervisorId ?? ""}>
                   <option value="">Sem Gerência</option>
                   {people.map((person) => <option key={person.id} value={person.id}>
                     {person.name} · {employeeCompanyName(scope.company.name, person.contractorCompany)} · {person.unit.name}</option>)}
                 </select><small>Escolha uma pessoa da Gerência na mesma unidade. A pessoa pode ser de uma empresa terceirizada.</small></label>}
-                <TextField name="department" label="Setor" value={current?.department} />
                 <TextField name="jobTitle" label="Função" value={current?.jobTitle} />
               </div>
               <ActiveField active={current?.active} />
@@ -186,7 +190,8 @@ async function Employees({ scope, edit, supervisorAccess, query, status, filters
         ...(scope.company.name.toLocaleLowerCase("pt-BR").includes(query.toLocaleLowerCase("pt-BR")) ? [{ contractorCompany: null }] : []),
       ] } : {}),
     },
-    include: { unit: { select: { name: true } }, supervisor: { select: { id: true, name: true } }, scope: { select: { userId: true, role: true, active: true } } },
+    include: { unit: { select: { name: true } }, contract: { select: { contractNumber: true } },
+      supervisor: { select: { id: true, name: true } }, scope: { select: { userId: true, role: true, active: true } } },
     orderBy: { name: "asc" },
   });
   return (
@@ -203,8 +208,8 @@ async function Employees({ scope, edit, supervisorAccess, query, status, filters
         </form>
       )}
       {team ? <TeamOverview scope={scope} people={people} search={query} status={status} filters={filters} /> :
-      <Table label={title} columns={["Matrícula", "Nome", "Empresa", "Unidade", "Setor", "Função", "Gerência", "Situação", ...(admin ? ["Ação"] : [])]}
-        rows={people.map((person) => [person.id, person.registration, person.name, employeeCompanyName(scope.company.name, person.contractorCompany), person.unit.name, person.department,
+      <Table label={title} columns={["Matrícula", "Nome", "Empresa", "Unidade", "Contrato", "Função", "Gerência", "Situação", ...(admin ? ["Ação"] : [])]}
+        rows={people.map((person) => [person.id, person.registration, person.name, employeeCompanyName(scope.company.name, person.contractorCompany), person.unit.name, person.contract?.contractNumber ?? "—",
           person.jobTitle, person.supervisor?.name ?? "—", <Status active={person.active} />,
           ...(admin ? [<RowActions id={`employee-actions-${person.id}`} label={`Ações de ${person.name}`}>
               <EditLink base={base} id={person.id} label={person.name} />
