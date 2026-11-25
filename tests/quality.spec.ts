@@ -821,3 +821,43 @@ test("administrador corrige e apaga entregas com auditoria e saldo consistente",
   expect(reopened).toMatchObject({ status: "WAITING_DELIVERY", delivery: null });
   expect(await balance()).toBe(8);
 });
+
+test("filtra e ordena o Histórico dentro da unidade autorizada", async ({ page }) => {
+  const companyId = "tsa";
+  const item = await db.equipment.create({ data: {
+    companyId, name: `Uniforme para filtro ${scenario.tag}`, category: "UNIFORM", makerModel: "Teste", notes: "",
+  } });
+  const dates = [
+    { employeeId: scenario.worker.id, deliveredAt: new Date("2025-08-20"), createdAt: new Date("2025-11-01T12:00:00Z") },
+    { employeeId: scenario.worker.id, deliveredAt: new Date("2025-08-10"), createdAt: new Date("2025-11-02T12:00:00Z") },
+    { employeeId: scenario.outside.id, deliveredAt: new Date("2025-08-15"), createdAt: new Date("2025-11-03T12:00:00Z") },
+  ];
+  await db.delivery.createMany({ data: dates.map((row) => ({
+    companyId, id: randomUUID(), equipmentId: item.id, actorId: scenario.manager.id, quantity: 1, ...row,
+  })) });
+  await signIn(page, scenario.manager);
+  await page.goto("/tsa/entregas");
+  const search = page.getByRole("form", { name: "Filtros do histórico" });
+  const rows = page.getByRole("row").filter({ hasText: item.name });
+  await search.getByRole("searchbox").fill(item.name.toUpperCase());
+  await search.getByRole("button", { name: "Aplicar" }).click();
+  await expect(page).toHaveURL(/\?q=/);
+  await expect(page.getByRole("row").filter({ has: page.getByRole("cell", { name: item.name, exact: true }) })).toHaveCount(2);
+  await expect(rows.first()).toContainText("10/08/2025");
+  const order = search.getByRole("combobox", { name: "Ordenar por" });
+  await order.selectOption("entrega-recente");
+  await search.getByRole("button", { name: "Aplicar" }).click();
+  await expect(rows.first()).toContainText("20/08/2025");
+  await search.getByLabel("Entrega de").fill("2025-08-11");
+  await search.getByLabel("Entrega até").fill("2025-08-20");
+  await search.getByRole("combobox", { name: "Recebimento" }).selectOption("anterior");
+  await search.getByRole("button", { name: "Aplicar" }).click();
+  await expect(rows).toHaveCount(1);
+  await expect(rows.first()).toContainText("20/08/2025");
+  await search.getByRole("combobox", { name: "Recebimento" }).selectOption("confirmado");
+  await search.getByRole("button", { name: "Aplicar" }).click();
+  await expect(rows).toHaveCount(0);
+  await search.getByRole("link", { name: "Limpar" }).click();
+  await expect(page).toHaveURL(/\/entregas$/);
+  await expect(rows).toHaveCount(2);
+});

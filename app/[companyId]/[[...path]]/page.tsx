@@ -350,7 +350,7 @@ export default async function CompanyPage({ params, searchParams }: {
     epis: <Catalog scope={scope} edit={edit} />,
     estoque: <Inventory scope={scope} operation={typeof search.acao === "string" ? search.acao : ""} registered={search.entrada === "1"}
       warehouseId={typeof search.almoxarifado === "string" ? search.almoxarifado : ""} />,
-    entregas: <Deliveries scope={scope} create={edit === "novo"} paper={edit === "ficha"}
+    entregas: <Deliveries scope={scope} query={search} create={edit === "novo"} paper={edit === "ficha"}
       correction={edit !== "novo" && edit !== "ficha" ? edit : ""}
       remove={typeof search.apagar === "string" ? search.apagar : ""}
       employeeId={(edit === "ficha" || search.registrada === "ficha") && typeof search.colaborador === "string" ? search.colaborador : ""}

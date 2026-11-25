@@ -16,11 +16,12 @@ import { Icon } from "@/components/icon";
 import { canAdminister, type AccessScope } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { employeesWhere, unitsWhere } from "@/lib/directory";
-import { canSetStockMinimum, deliveryCorrectionFields, handlesStock, hasPersonalEquipment, operationalDeliveryWhere, ownEmployeeId, personalDeliveryWhere, requestWhere } from "@/lib/equipment-access";
+import { canSetStockMinimum, deliveriesAwaitingReceipt, deliveryCorrectionFields, handlesStock, hasPersonalEquipment, operationalDeliveryWhere, ownEmployeeId, personalDeliveryWhere, requestWhere } from "@/lib/equipment-access";
 import { brazilDay, formatDay, inputDay, latestByItem, requestLabels, retirementLabels, todayInBrazil } from "@/lib/equipment";
 import { inventoryTitle, itemCatalogTitle, operationRequestTab } from "@/lib/organization";
-import { openRequestStatuses } from "@/lib/reporting";
+import { openRequestStatuses, reportFilters, type Query } from "@/lib/reporting";
 import { availableLotWhere, defaultStockMinimum, requestAvailability, stockBalances, stockKey } from "@/lib/stock-availability";
+import type { Prisma } from "@/generated/prisma/client";
 import type { RequestStatus } from "@/generated/prisma/enums";
 
 function Heading({ title, note, action }: { title: string; note?: string; action?: ReactNode }) {
@@ -71,6 +72,38 @@ const deliveryFeedback: Record<string, string> = {
   editada: "Entrega atualizada.",
   apagada: "Entrega removida do histórico.",
 };
+const historyOrders = {
+  "registro-recente": "Registro mais recente",
+  "registro-antigo": "Registro mais antigo",
+  "entrega-recente": "Entrega mais recente",
+  "entrega-antiga": "Entrega mais antiga",
+} as const;
+const historyReceipts = { anterior: "Entrega anterior", pendente: "Aguardando confirmação", confirmado: "Confirmado" } as const;
+const historyOrderBy = {
+  "registro-recente": [{ createdAt: "desc" }, { id: "desc" }],
+  "registro-antigo": [{ createdAt: "asc" }, { id: "asc" }],
+  "entrega-recente": [{ deliveredAt: "desc" }, { createdAt: "desc" }, { id: "desc" }],
+  "entrega-antiga": [{ deliveredAt: "asc" }, { createdAt: "asc" }, { id: "asc" }],
+} satisfies Record<keyof typeof historyOrders, Prisma.DeliveryOrderByWithRelationInput[]>;
+
+function deliveryHistoryFilters(query: Query, enabled: boolean) {
+  const search = enabled && typeof query.q === "string" ? query.q.trim().slice(0, 100) : "";
+  const receipt = enabled && typeof query.recebimento === "string" && Object.hasOwn(historyReceipts, query.recebimento)
+    ? query.recebimento as keyof typeof historyReceipts : "";
+  const order = enabled && typeof query.ordem === "string" && Object.hasOwn(historyOrders, query.ordem)
+    ? query.ordem as keyof typeof historyOrders : enabled ? "registro-recente" : "entrega-recente";
+  const { begin, end, error } = reportFilters(enabled ? { inicio: query.inicio, fim: query.fim } : {}, []);
+  const contains = { contains: search, mode: "insensitive" } as const;
+  const where: Prisma.DeliveryWhereInput[] = [];
+  if (search) where.push({ OR: [
+    { equipment: { name: contains } }, { employee: { name: contains } }, { employee: { registration: contains } },
+  ] });
+  if (receipt === "anterior") where.push({ warehouseId: null });
+  if (receipt === "pendente") where.push({ ...deliveriesAwaitingReceipt, retirement: null });
+  if (receipt === "confirmado") where.push({ receipt: { isNot: null } });
+  if (!error && (begin || end)) where.push({ deliveredAt: { gte: begin, lte: end } });
+  return { search, receipt, order, begin, end, error, where, orderBy: historyOrderBy[order] };
+}
 
 export async function Catalog({ scope, edit }: { scope: AccessScope; edit: string }) {
   if (!handlesStock(scope)) notFound();
@@ -470,9 +503,9 @@ async function DeliveryCorrection({ scope, id, remove }: { scope: AccessScope; i
 }
 
 export async function Deliveries({ scope, create, requestId, registered, paper = false, employeeId = "", personal = false, retired = false,
-  correction = "", remove = "" }: {
+  correction = "", remove = "", query = {} }: {
   scope: AccessScope; create: boolean; requestId: string; registered: string; paper?: boolean; employeeId?: string; personal?: boolean; retired?: boolean;
-  correction?: string; remove?: string;
+  correction?: string; remove?: string; query?: Query;
 }) {
   const { companyId } = scope;
   const root = `/${companyId}/entregas`;
@@ -539,8 +572,9 @@ export async function Deliveries({ scope, create, requestId, registered, paper =
     </>;
   }
 
+  const filters = deliveryHistoryFilters(query, operator);
   const rows = await db.delivery.findMany({
-    where: own ? personalDeliveryWhere(scope) : operationalDeliveryWhere(scope),
+    where: { AND: [own ? personalDeliveryWhere(scope) : operationalDeliveryWhere(scope), ...filters.where] },
     include: {
       employee: { select: { name: true } }, equipment: { select: { name: true } },
       stock: { select: { warehouse: { select: { name: true } }, lot: { select: { expiresAt: true } } } },
@@ -551,7 +585,7 @@ export async function Deliveries({ scope, create, requestId, registered, paper =
       replacementRequests: { where: { status: { in: ["WAITING_CATALOG", "PENDING_APPROVAL", "WAITING_DELIVERY"] } },
         select: { id: true }, take: 1 },
     },
-    orderBy: [{ deliveredAt: "desc" }, { createdAt: "desc" }, { id: "desc" }],
+    orderBy: filters.orderBy,
   });
   const personalRows = own ? rows : [];
   const latest = latestByItem(personalRows);
@@ -612,6 +646,26 @@ export async function Deliveries({ scope, create, requestId, registered, paper =
         <Link className="button primary" href={`${root}?edit=novo`}>Nova entrega</Link>
       </div>} />
     {operator && registered && <p className="feedback success operation-feedback" role="status">{deliveryFeedback[registered]}</p>}
+    {operator && <>
+      <form className="filters" action={root} aria-label="Filtros do histórico">
+        <label className="field">Item, colaborador ou matrícula
+          <input name="q" type="search" defaultValue={filters.search} maxLength={100} />
+        </label>
+        <label className="field">Entrega de<input type="date" name="inicio" defaultValue={filters.begin ? inputDay(filters.begin) : ""} /></label>
+        <label className="field">Entrega até<input type="date" name="fim" defaultValue={filters.end ? inputDay(filters.end) : ""} /></label>
+        <Choose label="Recebimento" name="recebimento" optional empty="Todos" selected={filters.receipt}
+          values={Object.entries(historyReceipts).map(([id, name]) => ({ id, name }))} />
+        <label className="field">Ordenar por
+          <select name="ordem" defaultValue={filters.order}>
+            {Object.entries(historyOrders).map(([id, label]) => <option key={id} value={id}>{label}</option>)}
+          </select>
+        </label>
+        <button className="button" type="submit">Aplicar</button>
+        {filters.where.length > 0 || filters.error || filters.order !== "registro-recente" ?
+          <Link className="button" href={root}>Limpar</Link> : null}
+      </form>
+      {filters.error && <p className="feedback error operation-feedback" role="alert">{filters.error}</p>}
+    </>}
     {own && <>
       {retired && <p className="feedback success operation-feedback" role="status">Item retirado de uso. A entrega ficou registrada no histórico.</p>}
       {pending.length > 0 && <section aria-labelledby="itens-a-confirmar">
