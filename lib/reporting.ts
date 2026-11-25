@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { employeesWhere, unitsWhere } from "@/lib/directory";
 import { deliveriesAwaitingReceipt, operationalDeliveryWhere, ownEmployeeId, personalDeliveryWhere, requestWhere } from "@/lib/equipment-access";
 import { brazilDay, formatDay, plusDays, requestLabels, todayInBrazil } from "@/lib/equipment";
+import { contractNumberLabel } from "@/lib/organization";
 
 export const alertLabels = {
   ca: "Validade do CA",
@@ -54,7 +55,7 @@ export const reportingEmployees = (scope: AccessScope) => db.employee.findMany({
 });
 
 export const deliveryReportColumns = [
-  "Quantidade", "Unidade de medida", "Especificação do EPI", "Nº do CA", "Número do contrato", "Data de entrega", "Data de devolução",
+  "Quantidade", "Unidade de medida", "Especificação do EPI", "Nº do CA", contractNumberLabel, "Data de entrega", "Data de devolução",
 ] as const;
 
 export function alertKind(query: Query): AlertKind | undefined {
@@ -126,7 +127,7 @@ export async function listDeadlines(scope: AccessScope, {
       where: { companyId, quantity: { gt: 0 }, warehouse: { unit: location }, lot: { expiresAt: { lte: cutoff }, equipment: { active: true } } },
       select: {
         warehouseId: true, lotId: true,
-        warehouse: { select: { name: true, unit: { select: { name: true } } } },
+        warehouse: { select: { contractNumber: true, unit: { select: { name: true } } } },
         lot: { select: { expiresAt: true, equipment: { select: { name: true } } } },
       },
     }) : [],
@@ -137,7 +138,7 @@ export async function listDeadlines(scope: AccessScope, {
     }] : []),
     ...lots.flatMap((row) => row.lot.expiresAt ? [{
       id: row.warehouseId + "/" + row.lotId, kind: "lote" as const, equipment: row.lot.equipment.name,
-      reference: row.warehouse.name, unit: row.warehouse.unit.name, due: row.lot.expiresAt,
+      reference: row.warehouse.contractNumber ?? "", unit: row.warehouse.unit.name, due: row.lot.expiresAt,
     }] : []),
   ];
   return result.sort((a, b) => a.due.getTime() - b.due.getTime() || a.equipment.localeCompare(b.equipment, "pt-BR"));
@@ -151,10 +152,10 @@ function deliveredItems(scope: AccessScope, filters: Filters, kind: ReportKind |
       ...(kind === individualReport ? [{ employeeId, equipment: { category: "EPI" as const } }] : []),
     ] },
     select: {
-      deliveredAt: true, quantity: true, returnedQuantity: true,
+      deliveredAt: true, quantity: true, returnedQuantity: true, contractNumber: true,
       employee: { select: { name: true, registration: true, unit: { select: { name: true } } } },
       equipment: { select: { name: true, certificate: true } },
-      stock: { select: { warehouse: { select: { unit: { select: { name: true } } } } } },
+      stock: { select: { warehouse: { select: { contractNumber: true, unit: { select: { name: true } } } } } },
       receipt: { select: { confirmedAt: true } },
       returns: { select: { returnedAt: true }, orderBy: { returnedAt: "asc" } },
     },
@@ -164,7 +165,8 @@ function deliveredItems(scope: AccessScope, filters: Filters, kind: ReportKind |
 
 function deliveryCells(row: Awaited<ReturnType<typeof deliveredItems>>[number]) {
   const dates = [...new Set(row.returns.map(({ returnedAt }) => formatDay(returnedAt)))];
-  return [row.quantity, "", row.equipment.name, row.equipment.certificate ?? "", "", formatDay(row.deliveredAt), dates.join("\n")] as const;
+  const contractNumber = row.contractNumber ?? row.stock?.warehouse.contractNumber ?? "";
+  return [row.quantity, "", row.equipment.name, row.equipment.certificate ?? "", contractNumber, formatDay(row.deliveredAt), dates.join("\n")] as const;
 }
 
 export async function individualReportRows(scope: AccessScope, filters: Filters, employeeId: string): Promise<Table> {

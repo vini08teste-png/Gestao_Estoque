@@ -102,8 +102,8 @@ export async function stockDemand(scope: AccessScope, unitId = "") {
 export function requestAvailability(balance: StockBalance | undefined, requested: number) {
   const quantity = balance?.quantity ?? 0;
   if ((balance?.largestWarehouse ?? 0) >= requested) return { ready: true, label: "Disponível em estoque", tone: "active", detail: `Saldo disponível na unidade: ${quantity} un.` };
-  if (quantity >= requested) return { ready: false, label: "Saldo dividido entre almoxarifados", tone: "deadline-warning",
-    detail: "Transfira ou reponha o saldo para atender o pedido em um único almoxarifado." };
+  if (quantity >= requested) return { ready: false, label: "Saldo dividido entre contratos", tone: "deadline-warning",
+    detail: "Transfira ou reponha o saldo para atender o pedido em um único contrato." };
   return {
     ready: false,
     label: quantity ? "Saldo insuficiente" : "Sem saldo disponível",

@@ -3,23 +3,23 @@
 ## Preparar o estoque
 
 1. Em **Cadastro de itens → Novo item**, escolha **EPI** ou **Uniforme**. Informe nome e fabricante/modelo. Para EPI, preencha número do CA e a data de validade do CA.
-2. Em **Estoque → Novo almoxarifado**, selecione uma unidade ativa e informe o nome. Cada almoxarifado atende uma unidade.
-3. Em **Estoque → Registrar entrada**, escolha o almoxarifado e o item. Informe a quantidade e a validade física do produto, quando houver. A movimentação registra quantidade, responsável e data.
+2. Em **Estoque → Novo contrato**, selecione uma unidade ativa e informe o número do contrato. Em registros antigos, use **Informar número** para vincular o contrato ao saldo existente.
+3. Em **Estoque → Registrar entrada**, escolha o contrato e o item. Informe a quantidade e a validade física do produto, quando houver. A movimentação registra quantidade, responsável e data.
 
 Se o item ainda não existir no catálogo, use **Cadastrar novo item** no próprio formulário. Ao salvar, o sistema cadastra o item e registra a entrada juntos.
 
 Para consultar um EPI, digite o número em **CA** e clique em **Consultar CA**. A base importada sugere nome, fabricante ou importador, referência e validade. Confira os campos antes de salvar. Se houver mais de uma opção, selecione a que corresponde ao equipamento. A tela indica a data da exportação consultada.
 
-O almoxarifado aparece na lista assim que é cadastrado. A seção **Saldo por item** mostra as quantidades disponíveis e indisponíveis por local. O administrador pode editar ou inativar itens. A inativação preserva os registros anteriores.
+O contrato aparece na lista assim que é cadastrado. A seção **Saldo por item** mostra as quantidades disponíveis e indisponíveis por contrato. O administrador pode editar ou inativar itens. A inativação preserva os registros anteriores.
 
 ## Entender a disponibilidade
 
-O saldo operacional usa os almoxarifados ativos da unidade e considera itens ativos, liberados e dentro da validade. Um produto com validade para hoje ainda está disponível para entrega. O sistema usa a data do dia em `America/Sao_Paulo`.
+O saldo operacional usa os contratos ativos da unidade e considera itens ativos, liberados e dentro da validade. Um produto com validade para hoje ainda está disponível para entrega. O sistema usa a data do dia em `America/Sao_Paulo`.
 
 | Indicador do pedido | Como é calculado |
 | --- | --- |
-| **Disponível em estoque** | Um almoxarifado da unidade tem a quantidade integral solicitada. |
-| **Saldo dividido entre almoxarifados** | A unidade tem a quantidade no total, distribuída entre locais. |
+| **Disponível em estoque** | Um contrato da unidade tem a quantidade integral solicitada. |
+| **Saldo dividido entre contratos** | A unidade tem a quantidade no total, distribuída entre contratos. |
 | **Saldo insuficiente** | Há saldo disponível, porém abaixo da quantidade pedida. A tela mostra o quanto falta. |
 | **Sem saldo disponível** | A unidade tem zero unidades elegíveis para o pedido. |
 
@@ -27,11 +27,11 @@ A disponibilidade é consultada quando a tela carrega. O estoque só é baixado 
 
 ## Registrar a entrega
 
-- Para atender um pedido, use **Solicitações → Pronto para entregar → Atender pedido**. O sistema preenche o destinatário, o item, a quantidade e a data sugerida. Se houver um único almoxarifado com saldo suficiente, ele já vem selecionado.
-- Para entregar diretamente, abra **Histórico → Nova entrega**, selecione o colaborador, o almoxarifado e o item. Informe a quantidade.
+- Para atender um pedido, use **Solicitações → Pronto para entregar → Atender pedido**. O sistema preenche o destinatário, o item, a quantidade e a data sugerida. Se houver um único contrato com saldo suficiente, ele já vem selecionado.
+- Para entregar diretamente, abra **Histórico → Nova entrega**, selecione o colaborador, o contrato e o item. Informe a quantidade.
 - Preencha a data. Ela pode ser de hoje ou anterior. Para pedidos, também precisa ser igual ou posterior à abertura do pedido.
 - Em **Comprovante (opcional)**, use **Tirar foto** para capturar a evidência pela câmera ou **Anexar comprovante** para escolher um PDF, PNG ou JPG de até **3 MB**. Confira a prévia antes de salvar.
-- Clique em **Confirmar entrega**. O sistema usa o saldo disponível do almoxarifado selecionado e prioriza as unidades com validade mais próxima.
+- Clique em **Confirmar entrega**. O sistema usa o saldo disponível do contrato selecionado e prioriza as unidades com validade mais próxima.
 
 Em uma transação, o sistema dá baixa no saldo, registra a entrega, grava a movimentação e conclui o pedido, quando vinculado. Se alguma operação falhar, o conjunto é desfeito. Uma verificação no momento da baixa impede saldo negativo se dois operadores tentarem usar as últimas unidades.
 

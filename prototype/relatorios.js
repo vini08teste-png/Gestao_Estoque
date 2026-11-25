@@ -16,7 +16,7 @@ const themes = {
   },
 };
 const deliveries = [
-  { person: 0, qty: 1, measure: "par", item: "Botina de segurança — Tipo B", ca: "32209", delivered: "2026-11-19", status: "Confirmado", category: "EPI" },
+  { person: 0, qty: 1, measure: "par", contract: "CTR-EXEMPLO-01", item: "Botina de segurança — Tipo B", ca: "32209", delivered: "2026-11-19", status: "Confirmado", category: "EPI" },
   { person: 0, qty: 1, measure: "un.", item: "Óculos de proteção com lente incolor", delivered: "2026-11-06", returned: "2026-11-18", status: "Devolvido para descarte", category: "EPI" },
   { person: 0, qty: 2, measure: "un.", item: "Camisa de uniforme operacional", delivered: "2026-11-03", status: "Entrega anterior", category: "Uniforme" },
   { person: 1, qty: 1, item: "Protetor auditivo tipo concha", ca: "33835", delivered: "2026-11-20", status: "Aguardando confirmação", category: "EPI" },
@@ -27,7 +27,7 @@ const pending = [
 ];
 const deadlines = [
   { type: "Validade do CA", item: deliveries[0].item, reference: "CA 32209", date: "2026-12-01", status: "Em 6 dias" },
-  { type: "Validade do produto", item: "Luva de proteção mecânica", reference: "Almoxarifado de apoio", unit: "Marabá", date: "2026-12-08", status: "Em 13 dias" },
+  { type: "Validade do produto", item: "Luva de proteção mecânica", reference: "Contrato de exemplo", unit: "Marabá", date: "2026-12-08", status: "Em 13 dias" },
 ];
 
 const coreColumns = [

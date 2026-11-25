@@ -3,9 +3,10 @@
 import { useId, useState } from "react";
 import { DeliveryProofField } from "@/components/delivery-proof-field";
 import { EquipmentPicker } from "@/components/equipment-picker";
+import { contractNumberLabel, stockContractLabel } from "@/lib/organization";
 
 type Person = { id: string; name: string; unitId: string; unit: { name: string } };
-type Warehouse = { id: string; name: string; unitId: string };
+type Warehouse = { id: string; name: string; contractNumber: string | null; unitId: string };
 type Item = { id: string; name: string };
 type StockOption = { warehouseId: string; item: Item; quantity: number };
 
@@ -57,25 +58,26 @@ export function DeliveryFields({ companyId, people, warehouses, stocks, items, t
       </div>
     )}
     {!paper && <div className="field">
-      <label htmlFor={warehouseFieldId}>Almoxarifado</label>
+      <label htmlFor={warehouseFieldId}>{contractNumberLabel}</label>
       <select id={warehouseFieldId} name="warehouse" value={warehouse} onChange={(event) => { setWarehouse(event.target.value); setItem(""); }}
         aria-describedby={emptyWarehouse ? warehouseFieldId + "-help" : undefined} required disabled={!unit}>
-        <option value="" disabled>{!unit ? "Selecione primeiro o colaborador" : unitWarehouses.length ? "Selecione o almoxarifado" : "Nenhum almoxarifado ativo nesta unidade"}</option>
-        {unitWarehouses.map(({ id, name }) => <option value={id} key={id}
-          disabled={request ? (warehouseBalances.get(id) ?? 0) < request.quantity : false}>
-          {name}{request && ` · Saldo ${warehouseBalances.get(id) ?? 0}`}
+        <option value="" disabled>{!unit ? "Selecione primeiro o colaborador" : unitWarehouses.length ? "Selecione o contrato" : "Nenhum contrato ativo nesta unidade"}</option>
+        {unitWarehouses.map((entry) => <option value={entry.id} key={entry.id}
+          disabled={request ? (warehouseBalances.get(entry.id) ?? 0) < request.quantity : false}>
+          {stockContractLabel(entry)}{request && ` · Saldo ${warehouseBalances.get(entry.id) ?? 0}`}
         </option>)}
       </select>
-      {emptyWarehouse && <small id={warehouseFieldId + "-help"}>Este almoxarifado já está cadastrado. Registre uma entrada para disponibilizar itens.</small>}
+      {emptyWarehouse && <small id={warehouseFieldId + "-help"}>Registre uma entrada para disponibilizar itens neste contrato.</small>}
     </div>}
+    {paper && <label className="field">{contractNumberLabel} (opcional)<input name="contractNumber" maxLength={120} /></label>}
     {paper ? <EquipmentPicker companyId={companyId} items={items} /> : !request && <div className="field">
       <label htmlFor={itemFieldId}>Item</label>
       <select id={itemFieldId} name="equipment" value={itemId} onChange={(event) => setItem(event.target.value)}
         aria-describedby={quantityAvailable === undefined ? undefined : itemFieldId + "-help"} required disabled={!warehouse}>
-        <option value="" disabled>{!warehouse ? "Selecione primeiro o almoxarifado" : itemOptions.length ? "Selecione o EPI ou uniforme" : "Nenhum item disponível"}</option>
+        <option value="" disabled>{!warehouse ? "Selecione primeiro o contrato" : itemOptions.length ? "Selecione o EPI ou uniforme" : "Nenhum item disponível"}</option>
         {itemOptions.map(({ id, name }) => <option value={id} key={id}>{name}</option>)}
       </select>
-      {quantityAvailable !== undefined && <small id={itemFieldId + "-help"}>Saldo disponível neste almoxarifado: {quantityAvailable} un.</small>}
+      {quantityAvailable !== undefined && <small id={itemFieldId + "-help"}>Saldo disponível neste contrato: {quantityAvailable} un.</small>}
     </div>}
     <div className="form-grid">
       {!request && <label className="field">Quantidade<input name="quantity" type="number" min={1}

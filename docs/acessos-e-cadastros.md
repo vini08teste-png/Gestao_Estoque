@@ -7,10 +7,10 @@
 | **Administrador** | Administrar a empresa, as unidades, os cadastros, os acessos, as regras e os prazos de alerta. Também pode operar o estoque e as entregas da empresa. |
 | **Gestor** | Consultar as equipes, cadastrar pessoas, conceder acesso de Gerência e operar o estoque, as solicitações e as entregas nas unidades autorizadas. |
 | **Gerência** | Acompanhar e cadastrar integrantes da equipe direta na própria unidade. Pode operar o estoque da unidade e atender pedidos e entregas no escopo da equipe. A decisão de aprovação aparece quando esse fluxo está ativado. |
-| **Almoxarifado** | Consultar colaboradores no escopo, cadastrar itens e lotes, operar o estoque e atender solicitações e entregas nas unidades autorizadas. |
+| **Operador de estoque** | Consultar colaboradores no escopo, cadastrar itens e lotes, operar o estoque e atender solicitações e entregas nas unidades autorizadas. |
 | **Colaborador** | Consultar o próprio cadastro, solicitar itens, acompanhar os pedidos, confirmar recebimentos, pedir trocas e retirar itens de uso. |
 
-Pessoas com os perfis Gestor, Gerência e Almoxarifado também usam **Meus itens** e **Meus pedidos** quando têm um cadastro de colaborador ativo vinculado à conta. O vínculo pessoal define a unidade e o destinatário dos próprios pedidos.
+Pessoas com os perfis Gestor, Gerência e Operador de estoque também usam **Meus itens** e **Meus pedidos** quando têm um cadastro de colaborador ativo vinculado à conta. O vínculo pessoal define a unidade e o destinatário dos próprios pedidos.
 
 O seletor de empresa aparece para quem está na empresa atual como administrador e tem acesso a mais de uma empresa. A permissão é conferida no servidor em cada empresa. Uma conta pode ter perfis diferentes na TSA e na TSA Lynx.
 
@@ -28,7 +28,7 @@ O administrador edita registros existentes. Para corrigir a unidade de um cadast
 1. Como administrador, encontre a pessoa em **Colaboradores** e clique em **Configurar acesso**.
 2. Confira o **Colaborador vinculado**, defina o **Perfil de trabalho** e informe o e-mail usado no login.
 3. Para uma conta nova, defina uma senha temporária de 6 a 128 caracteres. Para vincular uma conta existente a outra empresa, use o mesmo e-mail e deixe o campo da senha vazio.
-4. Em perfis **Gestor** e **Almoxarifado**, escolha as unidades autorizadas ou marque **Todas as unidades**. Para **Gerência** e **Colaborador**, o vínculo pessoal é obrigatório e determina a unidade.
+4. Em perfis **Gestor** e **Operador de estoque**, escolha as unidades autorizadas ou marque **Todas as unidades**. Para **Gerência** e **Colaborador**, o vínculo pessoal é obrigatório e determina a unidade.
 5. Na primeira entrada com senha temporária, a pessoa cria a própria senha e depois entra de novo.
 
 Para cadastrar alguém da **LUK** com o perfil Gerência, informe LUK no cadastro, atribua o perfil **Gerência** no acesso e selecione essa pessoa em **Responsável da Gerência** nos cadastros de sua equipe. Por exemplo, alguém da LUK pode liderar colaboradores da TSA Lynx na unidade onde todos atuam.

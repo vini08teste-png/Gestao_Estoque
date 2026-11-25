@@ -19,7 +19,7 @@ import { db } from "@/lib/db";
 import { employeesWhere, unitsWhere } from "@/lib/directory";
 import { canSetStockMinimum, deliveriesAwaitingReceipt, deliveryCorrectionFields, handlesStock, hasPersonalEquipment, operationalDeliveryWhere, ownEmployeeId, personalDeliveryWhere, requestWhere } from "@/lib/equipment-access";
 import { brazilDay, formatDay, inputDay, itemsInUse, latestByItem, requestLabels, retirementLabels, todayInBrazil } from "@/lib/equipment";
-import { inventoryTitle, itemCatalogTitle, operationRequestTab } from "@/lib/organization";
+import { contractNumberLabel, inventoryTitle, itemCatalogTitle, operationRequestTab, stockContractLabel } from "@/lib/organization";
 import { openRequestStatuses, reportFilters, type Query } from "@/lib/reporting";
 import { availableLotWhere, defaultStockMinimum, requestAvailability, stockBalances, stockKey } from "@/lib/stock-availability";
 import type { Prisma } from "@/generated/prisma/client";
@@ -147,7 +147,8 @@ export async function Inventory({ scope, operation, warehouseId = "", registered
   const admin = canAdminister(scope);
   if (!handlesStock(scope)) notFound();
   if (operation === "minimos") return <StockMinimums scope={scope} />;
-  if (operation && !["entrada", "almoxarifado"].includes(operation)) notFound();
+  const editingContract = operation === "contrato" || operation === "almoxarifado";
+  if (operation && operation !== "entrada" && !editingContract) notFound();
   const root = `/${companyId}/estoque`;
   const [stocks, warehouses, items, units] = await Promise.all([
     !operation ? db.stock.findMany({
@@ -155,12 +156,14 @@ export async function Inventory({ scope, operation, warehouseId = "", registered
       include: { warehouse: { include: { unit: true } }, lot: { include: { equipment: true } } },
       orderBy: [{ warehouse: { name: "asc" } }, { lot: { equipment: { name: "asc" } } }],
     }) : [],
-    operation !== "almoxarifado" ? db.warehouse.findMany({
+    !editingContract || warehouseId ? db.warehouse.findMany({
       where: { companyId, active: true, unit: { ...unitsWhere(scope), active: true } }, include: { unit: true }, orderBy: { name: "asc" },
     }) : [],
     operation === "entrada" ? db.equipment.findMany({ where: { companyId, active: true }, select: { id: true, name: true }, orderBy: { name: "asc" } }) : [],
-    operation === "almoxarifado" ? db.unit.findMany({ where: { ...unitsWhere(scope), active: true }, orderBy: { name: "asc" } }) : [],
+    editingContract && !warehouseId ? db.unit.findMany({ where: { ...unitsWhere(scope), active: true }, orderBy: { name: "asc" } }) : [],
   ]);
+  const contract = editingContract && warehouseId ? warehouses.find(({ id }) => id === warehouseId) : undefined;
+  if (editingContract && warehouseId && (!contract || (contract.contractNumber && !admin))) notFound();
   const today = todayInBrazil();
   const totals = new Map<string, { warehouse: typeof warehouses[number]; item: string; available: number; unavailable: number }>();
   for (const { warehouse, lot, quantity } of stocks) {
@@ -172,38 +175,44 @@ export async function Inventory({ scope, operation, warehouseId = "", registered
   }
   const warehousesWithItems = new Set(stocks.map(({ warehouseId }) => warehouseId));
   return <>
-    <Heading title={operation === "entrada" ? "Registrar entrada" : operation === "almoxarifado" ? "Novo almoxarifado" : inventoryTitle}
+    <Heading title={operation === "entrada" ? "Registrar entrada" : editingContract ? contract ? "Informar número do contrato" : "Novo contrato" : inventoryTitle}
       action={operation ? <Link className="button" href={root}>Voltar ao estoque</Link> : <div className="operation-actions">
         {admin && <Link className="button" href={`/${companyId}/usuarios?perfil=WAREHOUSE`}>Gerenciar responsáveis</Link>}
         {canSetStockMinimum(scope) && <Link className="button" href={`${root}?acao=minimos`}>Estoque mínimo</Link>}
-        <Link className="button" href={`${root}?acao=almoxarifado`}>Novo almoxarifado</Link>
+        <Link className="button" href={`${root}?acao=contrato`}>Novo contrato</Link>
         <Link className="button primary" href={`${root}?acao=entrada`}>Registrar entrada</Link>
       </div>} />
     {!operation && registered && <p className="feedback success operation-feedback" role="status">Entrada registrada.</p>}
-    {operation === "almoxarifado" ? <Editor title="Dados do almoxarifado"><ActionForm action={saveWarehouse.bind(null, companyId)} continueLabel="Salvar e continuar" reset>
-      {textField("Nome do almoxarifado", "name")}
-      <Choose label="Unidade" name="unit" values={units} />
+    {editingContract ? <Editor title="Dados do contrato"><ActionForm action={saveWarehouse.bind(null, companyId, contract?.id ?? "")}
+      continueLabel={contract ? undefined : "Salvar e continuar"} reset={!contract}>
+      {contract && <p>{contract.unit.name} · {stockContractLabel(contract)}</p>}
+      {textField(contractNumberLabel, "contractNumber", contract?.contractNumber ?? undefined)}
+      {!contract && <Choose label="Unidade" name="unit" values={units} />}
     </ActionForm></Editor> : operation === "entrada" ? <Editor title="Item recebido">
       {warehouses.length ? <ActionForm action={addStock.bind(null, companyId, randomUUID())} continueLabel="Salvar e continuar" reset>
-        <Choose label="Almoxarifado" name="warehouse"
+        <Choose label={contractNumberLabel} name="warehouse"
           selected={warehouses.some(({ id }) => id === warehouseId) ? warehouseId : warehouses.length === 1 ? warehouses[0].id : ""}
-          values={warehouses.map((row) => ({ id: row.id, name: `${row.name} · ${row.unit.name}` }))} />
+          values={warehouses.map((row) => ({ id: row.id, name: `${stockContractLabel(row)} · ${row.unit.name}` }))} />
         <EquipmentPicker companyId={companyId} items={items} />
         <div className="form-grid">
           {quantityField}
           <label className="field">Validade do produto (opcional)<input type="date" name="expiresAt" /></label>
         </div>
-      </ActionForm> : <p className="empty">Para registrar uma entrada, cadastre um <Link href={`${root}?acao=almoxarifado`}
-        className="text-action">almoxarifado</Link>.</p>}
+      </ActionForm> : <p className="empty">Para registrar uma entrada, <Link href={`${root}?acao=contrato`}
+        className="text-action">cadastre um contrato</Link>.</p>}
     </Editor> : <>
-      <h2 className="section-title">Almoxarifados</h2>
-      <Records cardsOnMobile columns={["Almoxarifado", "Unidade", "Situação", "Ação"]}
-        rows={warehouses.map((row) => [row.id, row.name, row.unit.name, warehousesWithItems.has(row.id) ? "Com itens cadastrados" : "Aguardando primeira entrada",
-          <Link className="text-action" href={`${root}?acao=entrada&almoxarifado=${encodeURIComponent(row.id)}`}>Registrar entrada</Link>])} />
+      <h2 className="section-title">Contratos</h2>
+      <Records cardsOnMobile columns={[contractNumberLabel, "Unidade", "Situação", "Ação"]}
+        rows={warehouses.map((row) => [row.id, stockContractLabel(row), row.unit.name, warehousesWithItems.has(row.id) ? "Com itens cadastrados" : "Aguardando primeira entrada",
+          <div className="operation-actions">
+            <Link className="text-action" href={`${root}?acao=entrada&contrato=${encodeURIComponent(row.id)}`}>Registrar entrada</Link>
+            {!row.contractNumber && <Link className="text-action" href={`${root}?acao=contrato&contrato=${encodeURIComponent(row.id)}`}>Informar número</Link>}
+            {row.contractNumber && admin && <Link className="text-action" href={`${root}?acao=contrato&contrato=${encodeURIComponent(row.id)}`}>Editar número</Link>}
+          </div>])} />
       <h2 className="section-title">Saldo por item</h2>
-      <Records cardsOnMobile columns={["Item", "Almoxarifado", "Unidade", "Disponível", "Indisponível"]}
+      <Records cardsOnMobile columns={["Item", contractNumberLabel, "Unidade", "Disponível", "Indisponível"]}
         rows={[...totals].map(([key, { warehouse, item, available, unavailable }]) =>
-          [key, item, warehouse.name, warehouse.unit.name, available, unavailable])} />
+          [key, item, stockContractLabel(warehouse), warehouse.unit.name, available, unavailable])} />
     </>}
   </>;
 }
@@ -282,7 +291,7 @@ export async function Rules({ scope }: { scope: AccessScope }) {
   return <>
     <Heading title="Regras de aprovação" note={scope.company.requestApprovalEnabled ?
       "A regra de um item tem prioridade sobre a regra geral da unidade." :
-      "Aprovação desativada. Os pedidos seguem para o almoxarifado. Você pode guardar regras para uso futuro."} />
+      "Aprovação desativada. Os pedidos seguem para atendimento. Você pode guardar regras para uso futuro."} />
     <Editor title="Definir regra">
       <ActionForm action={saveRule.bind(null, companyId)} continueLabel="Salvar e continuar" reset>
         <Choose label="Unidade" name="unit" values={units} />
@@ -490,13 +499,16 @@ async function DeliveryCorrection({ scope, id, remove }: { scope: AccessScope; i
             }))} />
             <Choose label="Item" name="equipment" selected={row.equipmentId} values={items} />
           </>}
+          {!row.warehouseId && <label className="field">{contractNumberLabel} (opcional)
+            <input name="contractNumber" maxLength={120} defaultValue={row.contractNumber ?? ""} />
+          </label>}
           <label className="field">Data da entrega<input type="date" name="deliveredAt" defaultValue={inputDay(row.deliveredAt)}
             max={inputDay(todayInBrazil())} min={row.request ? inputDay(brazilDay(row.request.openedAt)) : undefined} required /></label>
           <label className="field">Quantidade<input type="number" name="quantity" min={1} max={1_000_000}
             defaultValue={row.quantity} readOnly={!fields.quantity} required /></label>
         </div>
         {!fields.quantity && <p>A quantidade está vinculada a uma solicitação, troca ou retirada de uso.</p>}
-        {fields.quantity && row.warehouseId && <p>Alterar a quantidade ajusta o saldo do almoxarifado.
+        {fields.quantity && row.warehouseId && <p>Alterar a quantidade ajusta o saldo do contrato.
           {row.receipt && " O colaborador precisará confirmar o recebimento da quantidade corrigida."}</p>}
         <DeliveryProofField replacing={Boolean(row.proof)} />
         <label className="field">Motivo da correção<textarea name="note" rows={3} maxLength={500} required /></label>
@@ -534,7 +546,7 @@ export async function Deliveries({ scope, create, requestId, registered, paper =
       }),
       paper ? [] : db.warehouse.findMany({
         where: { companyId, active: true, unit: { ...unitsWhere(scope), active: true, ...(request && { id: request.unitId }) } },
-        orderBy: { name: "asc" }, select: { id: true, name: true, unitId: true },
+        orderBy: { name: "asc" }, select: { id: true, name: true, contractNumber: true, unitId: true },
       }),
       paper ? [] : db.stock.findMany({
         where: { companyId, quantity: { gt: 0 },
@@ -574,9 +586,9 @@ export async function Deliveries({ scope, create, requestId, registered, paper =
           } : undefined} />
         </ActionForm>
       </Editor> : <section className="panel"><p className="empty">{request ?
-        <>Nenhum almoxarifado da unidade tem saldo suficiente. <Link className="text-action" href={`/${companyId}/estoque?acao=entrada`}>Registrar entrada</Link></> : !people.length ?
+        <>Nenhum contrato da unidade tem saldo suficiente. <Link className="text-action" href={`/${companyId}/estoque?acao=entrada`}>Registrar entrada</Link></> : !people.length ?
         "Nenhum colaborador ativo está disponível no seu escopo." :
-        <>A unidade precisa de um almoxarifado para registrar entregas. <Link className="text-action" href={`/${companyId}/estoque?acao=almoxarifado`}>Cadastrar almoxarifado</Link></>}</p></section>}
+        <>A unidade precisa de um contrato para registrar entregas. <Link className="text-action" href={`/${companyId}/estoque?acao=contrato`}>Cadastrar contrato</Link></>}</p></section>}
     </>;
   }
 
@@ -585,7 +597,7 @@ export async function Deliveries({ scope, create, requestId, registered, paper =
     where: { AND: [own ? personalDeliveryWhere(scope) : operationalDeliveryWhere(scope), ...filters.where] },
     include: {
       employee: { select: { name: true } }, equipment: { select: { name: true } },
-      stock: { select: { warehouse: { select: { name: true } }, lot: { select: { expiresAt: true } } } },
+      stock: { select: { warehouse: { select: { name: true, contractNumber: true } }, lot: { select: { expiresAt: true } } } },
       actor: { select: { scopes: { where: { companyId }, select: { name: true } } } },
       proof: { select: { deliveryId: true } },
       receipt: { select: { confirmedAt: true } },
@@ -614,7 +626,7 @@ export async function Deliveries({ scope, create, requestId, registered, paper =
         <label className="field">Quantidade<input name="quantity" type="number" min={1}
           max={row.quantity - row.returnedQuantity} defaultValue={row.quantity - row.returnedQuantity} required /></label>
         <p>Descreva o motivo da troca, anexe uma foto ou envie os dois.</p>
-        <p>Entregue o item antigo ao almoxarifado para descarte ao receber a substituição.</p>
+        <p>Entregue o item antigo ao operador de estoque para descarte ao receber a substituição.</p>
         <label className="field">Justificativa da troca<textarea name="reason" rows={2} maxLength={500} /></label>
         <ReplacementPhotoField />
       </ActionForm>
@@ -702,8 +714,8 @@ export async function Deliveries({ scope, create, requestId, registered, paper =
       </>}
       <h2 className="section-title">Histórico de entregas</h2>
     </>}
-    <Records cardsOnMobile columns={["Item", ...(own ? [] : ["Colaborador"]), "Almoxarifado", "Quantidade", "Data da entrega", "Registrado em", "Responsável", "Recebimento", "Situação do item", "Anexo", ...(admin ? ["Ações"] : [])]}
-      rows={rows.map((row) => [row.id, row.equipment.name, ...(own ? [] : [row.employee.name]), row.stock?.warehouse.name ?? "—", row.quantity,
+    <Records cardsOnMobile columns={["Item", ...(own ? [] : ["Colaborador"]), contractNumberLabel, "Quantidade", "Data da entrega", "Registrado em", "Responsável", "Recebimento", "Situação do item", "Anexo", ...(admin ? ["Ações"] : [])]}
+      rows={rows.map((row) => [row.id, row.equipment.name, ...(own ? [] : [row.employee.name]), row.contractNumber ?? (row.stock ? stockContractLabel(row.stock.warehouse) : "—"), row.quantity,
         <time className="delivery-day" dateTime={inputDay(row.deliveredAt)}>{formatDay(row.deliveredAt)}</time>,
         <time className="delivery-day" dateTime={row.createdAt.toISOString()}>{dateTimeInBrazil.format(row.createdAt)}</time>,
         row.actor.scopes[0]?.name ?? "—",

@@ -271,7 +271,7 @@ export async function Alerts({ scope, query }: { scope: AccessScope; query: Quer
     records[row.kind].push({
       ...row, id: `${row.kind}-${row.id}`, status: label, tone,
       detail: <><time dateTime={inputDay(row.due)}>{formatDay(row.due)}</time>
-        <small>{row.kind === "ca" ? `CA ${row.reference}` : `Validade do produto · ${row.reference}`}</small></>,
+        <small>{row.kind === "ca" ? `CA ${row.reference}` : `Validade do produto · ${row.reference ? `Contrato ${row.reference}` : "Contrato não informado"}`}</small></>,
       action: { href: reportPath, label: "Ver vencimentos" },
     });
   }

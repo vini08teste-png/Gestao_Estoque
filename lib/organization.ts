@@ -4,7 +4,7 @@ export const roles: Record<Role, string> = {
   ADMIN: "Administrador",
   MANAGER: "Gestor",
   SUPERVISOR: "Gerência",
-  WAREHOUSE: "Almoxarifado",
+  WAREHOUSE: "Operador de estoque",
   EMPLOYEE: "Colaborador",
 };
 
@@ -14,6 +14,11 @@ export const companyBrands = {
 };
 
 export const inventoryTitle = "Estoque";
+export const contractNumberLabel = "Número do contrato";
+
+export function stockContractLabel(stock: { contractNumber: string | null; name: string }) {
+  return stock.contractNumber ?? `${stock.name} · Contrato não informado`;
+}
 export const itemCatalogTitle = "Cadastro de itens";
 
 export const operationRequestTab = (role: Role) => role === "SUPERVISOR" ? "Da equipe" : role === "ADMIN" ? "Da operação" : "Para atender";

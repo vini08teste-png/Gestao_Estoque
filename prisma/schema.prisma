@@ -196,12 +196,14 @@ model Warehouse {
   id        String @default(cuid())
   unitId    String
   name      String
+  contractNumber String? @db.VarChar(120)
   active    Boolean @default(true)
   unit      Unit @relation(fields: [companyId, unitId], references: [companyId, id], onDelete: Restrict)
   stocks    Stock[]
 
   @@id([companyId, id])
   @@unique([companyId, unitId, name])
+  @@unique([companyId, unitId, contractNumber])
 }
 
 model EquipmentLot {
@@ -312,6 +314,7 @@ model Delivery {
   quantity       Int
   returnedQuantity Int @default(0)
   deliveredAt    DateTime @db.Date
+  contractNumber String? @db.VarChar(120)
   suggestedAt    DateTime? @db.Date
   replacementAt  DateTime? @db.Date
   adjustmentNote String?

@@ -13,6 +13,7 @@ import { canSetStockMinimum, deliveryCorrectionFields, handlesStock, hasPersonal
 import { brazilDay, jobTitleKey, retirementLabels, todayInBrazil } from "@/lib/equipment";
 import { text, type FormResult } from "@/lib/forms";
 import { finishSave } from "@/lib/form-navigation";
+import { contractNumberLabel } from "@/lib/organization";
 import { availableLotWhere } from "@/lib/stock-availability";
 
 class InputError extends Error {}
@@ -109,12 +110,22 @@ export async function saveEquipment(companyId: string, id: string | null, _: For
   return finishSave(result, data, `/${companyId}/epis`);
 }
 
-export async function saveWarehouse(companyId: string, _: FormResult, data: FormData) {
+export async function saveWarehouse(companyId: string, warehouseId: string, _: FormResult, data: FormData) {
   const result = await mutate(companyId, handlesStock, async (tx, scope) => {
+    const contractNumber = field(data, "contractNumber", contractNumberLabel);
+    if (warehouseId) {
+      const updated = await tx.warehouse.updateMany({
+        where: { companyId, id: warehouseId, active: true, unit: { ...unitsWhere(scope), active: true },
+          ...(!canAdminister(scope) && { contractNumber: null }) },
+        data: { contractNumber },
+      });
+      if (!updated.count) return invalid("Registro de estoque indisponível no seu escopo.");
+      return;
+    }
     const unitId = field(data, "unit", "Unidade");
     const unit = await tx.unit.findFirst({ where: { AND: [unitsWhere(scope), { id: unitId, active: true }] } });
     if (!unit) return invalid("Selecione uma unidade ativa no seu escopo.");
-    await tx.warehouse.create({ data: { companyId, unitId, name: field(data, "name", "Nome") } });
+    await tx.warehouse.create({ data: { companyId, unitId, name: contractNumber, contractNumber } });
   });
   return finishSave(result, data, `/${companyId}/estoque`);
 }
@@ -122,12 +133,12 @@ export async function saveWarehouse(companyId: string, _: FormResult, data: Form
 export async function addStock(companyId: string, movementId: string, _: FormResult, data: FormData) {
   const result = await mutate(companyId, handlesStock, async (tx, scope, actorId) => {
     if (await tx.stockMovement.findUnique({ where: { id: movementId, companyId, actorId }, select: { id: true } })) return;
-    const warehouseId = field(data, "warehouse", "Almoxarifado");
+    const warehouseId = field(data, "warehouse", contractNumberLabel);
     const quantity = count(data);
     const warehouse = await tx.warehouse.findFirst({
       where: { companyId, id: warehouseId, active: true, unit: { ...unitsWhere(scope), active: true } },
     });
-    if (!warehouse) return invalid("Selecione um almoxarifado ativo da sua unidade.");
+    if (!warehouse) return invalid("Selecione um registro de estoque ativo da sua unidade.");
     const date = text(data, "expiresAt");
     const expiresAt = date ? parseDay(date) : null;
     const equipmentId = await resolveEquipment(tx, companyId, data, null);
@@ -365,7 +376,7 @@ async function deliveryStock(tx: Prisma.TransactionClient, companyId: string, wa
 async function deductDeliveryStock(tx: Prisma.TransactionClient, location: { companyId: string; warehouseId: string },
   deliveryId: string, actorId: string, stocks: { lotId: string; quantity: number }[], quantity: number) {
   if (stocks.reduce((total, stock) => total + stock.quantity, 0) < quantity) {
-    return invalid("O almoxarifado selecionado não tem saldo disponível suficiente para este item.");
+    return invalid("O estoque selecionado não tem saldo disponível suficiente para este item.");
   }
   let remaining = quantity;
   for (const stock of stocks) {
@@ -420,13 +431,14 @@ export async function registerDelivery(companyId: string, id: string, requestId:
       }
     }
     const proof = await readAttachment(data, "proof");
-    const warehouseId = paper ? null : field(data, "warehouse", "Almoxarifado");
+    const warehouseId = paper ? null : field(data, "warehouse", contractNumberLabel);
+    const contractNumber = paper ? field(data, "contractNumber", contractNumberLabel, 120, true) || null : null;
     const stocks = warehouseId ? await deliveryStock(tx, companyId, warehouseId, equipmentId, employee.unitId, today) : [];
     if (warehouseId && !stocks.length) {
-      return invalid("O almoxarifado selecionado não tem saldo disponível suficiente para este item.");
+      return invalid("O estoque selecionado não tem saldo disponível suficiente para este item.");
     }
     await tx.delivery.create({
-      data: { companyId, warehouseId, lotId: stocks[0]?.lotId ?? null, id, employeeId, actorId, equipmentId, quantity, deliveredAt,
+      data: { companyId, warehouseId, lotId: stocks[0]?.lotId ?? null, id, employeeId, actorId, equipmentId, quantity, deliveredAt, contractNumber,
         requestId: request?.id, ...(proof && { proof: { create: { ...proof.data, name: proof.name } } }) },
     });
     if (warehouseId) await deductDeliveryStock(tx, { companyId, warehouseId }, id, actorId, stocks, quantity);
@@ -490,6 +502,8 @@ export async function editDelivery(companyId: string, id: string, _: FormResult,
     const quantity = editable.quantity ? count(data) : delivery.quantity;
     const employeeId = editable.assignment ? field(data, "employee", "Colaborador") : delivery.employeeId;
     const equipmentId = editable.assignment ? field(data, "equipment", "Item") : delivery.equipmentId;
+    const contractNumber = !delivery.warehouseId && data.has("contractNumber") ?
+      field(data, "contractNumber", contractNumberLabel, 120, true) || null : delivery.contractNumber;
     if (employeeId !== delivery.employeeId && !await tx.employee.findFirst({
       where: { ...employeesWhere(scope), id: employeeId, active: true }, select: { id: true },
     })) return invalid("Selecione um colaborador ativo desta empresa.");
@@ -499,7 +513,7 @@ export async function editDelivery(companyId: string, id: string, _: FormResult,
     const proof = await readAttachment(data, "proof");
     const difference = quantity - delivery.quantity;
     if (!difference && deliveredAt.getTime() === delivery.deliveredAt.getTime() &&
-        employeeId === delivery.employeeId && equipmentId === delivery.equipmentId && !proof) return;
+        employeeId === delivery.employeeId && equipmentId === delivery.equipmentId && contractNumber === delivery.contractNumber && !proof) return;
     if (delivery.warehouseId && difference > 0) {
       const stocks = await deliveryStock(tx, companyId, delivery.warehouseId, equipmentId, delivery.employee.unitId, today);
       await deductDeliveryStock(tx, { companyId, warehouseId: delivery.warehouseId }, id, actorId, stocks, difference);
@@ -510,14 +524,14 @@ export async function editDelivery(companyId: string, id: string, _: FormResult,
     if (difference && delivery.receipt) await tx.deliveryReceipt.delete({ where: { companyId_deliveryId: { companyId, deliveryId: id } } });
     const updatedProof = proof && { ...proof.data, name: proof.name };
     await tx.delivery.update({
-      where: key, data: { deliveredAt, quantity, employeeId, equipmentId,
+      where: key, data: { deliveredAt, quantity, employeeId, equipmentId, contractNumber,
         ...(updatedProof && { proof: { upsert: { create: updatedProof, update: updatedProof } } }) },
     });
     await tx.equipmentEvent.create({ data: { companyId, subjectId: id, actorId, kind: "DELIVERY_EDITED", note: JSON.stringify({
       reason: note,
       before: { deliveredAt: delivery.deliveredAt, quantity: delivery.quantity, employeeId: delivery.employeeId,
-        equipmentId: delivery.equipmentId, proofHash: delivery.proof?.sha256, receipt: difference ? delivery.receipt : undefined },
-      after: { deliveredAt, quantity, employeeId, equipmentId, proofHash: updatedProof?.sha256 ?? delivery.proof?.sha256 },
+        equipmentId: delivery.equipmentId, contractNumber: delivery.contractNumber, proofHash: delivery.proof?.sha256, receipt: difference ? delivery.receipt : undefined },
+      after: { deliveredAt, quantity, employeeId, equipmentId, contractNumber, proofHash: updatedProof?.sha256 ?? delivery.proof?.sha256 },
     }) } });
   });
   return finishSave(result.success ? { success: "Entrega atualizada." } : result, data, `/${companyId}/entregas?registrada=editada`);

@@ -14,7 +14,7 @@ A aba diferencia unidades sem configuração de itens esperados de funções às
 
 Na **Visão geral**, **Estoque baixo ou zerado** aparece acima dos indicadores da operação quando há itens no mínimo, abaixo dele ou zerados. Em **Alertas**, o cartão de estoque fica destacado quando há alertas e os itens zerados aparecem primeiro.
 
-O cartão **Itens com falta para pedidos** abre a categoria **Saldo para pedidos**. Para cada item e unidade, o sistema soma os pedidos identificados aguardando entrega no escopo do perfil e compara com o saldo elegível. Por exemplo, cinco camisetas pedidas e três disponíveis resultam em duas em falta. Para a Gerência, entram somente os pedidos da equipe. A fila verifica se um almoxarifado consegue atender o pedido inteiro.
+O cartão **Itens com falta para pedidos** abre a categoria **Saldo para pedidos**. Para cada item e unidade, o sistema soma os pedidos identificados aguardando entrega no escopo do perfil e compara com o saldo elegível. Por exemplo, cinco camisetas pedidas e três disponíveis resultam em duas em falta. Para a Gerência, entram somente os pedidos da equipe. A fila verifica se um contrato da unidade consegue atender o pedido inteiro.
 
 ## Alertas
 
@@ -24,7 +24,7 @@ Escolha uma unidade autorizada e clique em **Filtrar**. Os cartões mostram a qu
 | --- | --- |
 | **Estoque baixo ou zerado** | Considera o saldo elegível por item e unidade. O alerta aparece quando o saldo atinge ou fica abaixo do mínimo. Um item com mínimo configurado pode aparecer zerado mesmo antes da primeira entrada. |
 | **Validade do CA** | Considera o Certificado de Aprovação registrado em um EPI ativo. O prazo acompanha o cadastro do item. |
-| **Validade do produto** | Considera a validade física dos itens ativos com saldo. O alerta identifica o almoxarifado. |
+| **Validade do produto** | Considera a validade física dos itens ativos com saldo. O alerta exibe o número do contrato quando informado. |
 
 Os três prazos de validade começam em **7, 15 e 30 dias**. O administrador pode ajustá-los em **Alertas → Configurar prazos de alerta**, usando três números em ordem crescente entre 1 e 365. Em **Estoque → Estoque mínimo**, o administrador e o gestor definem o limite por item e unidade. **Usar padrão** restaura o limite de cinco unidades. O valor zero aciona o alerta quando o saldo zera.
 
@@ -39,9 +39,9 @@ O vencimento do CA e a validade física do produto são acompanhados separadamen
 | **Vencimentos** | CA e validade física do produto, com referência e situação. | Data de vencimento |
 | **Ficha individual de EPI** | EPIs entregues ao colaborador selecionado, com campos em branco para rubricas de entrega e devolução. | Data da entrega ou da ficha |
 
-Os perfis Gestor, Gerência, Almoxarifado e Administrador podem consultar relatórios no seu escopo. Os filtros por unidade e período se aplicam à tela e ao CSV. O CSV usa UTF-8 e ponto e vírgula como separador.
+Os perfis Gestor, Gerência, Operador de estoque e Administrador podem consultar relatórios no seu escopo. Os filtros por unidade e período se aplicam à tela e ao CSV. O CSV usa UTF-8 e ponto e vírgula como separador.
 
-Para a ficha, selecione **Ficha individual de EPI**, escolha o colaborador e clique em **Gerar ficha**. Os botões de impressão e PDF abrem o diálogo do navegador em A4 paisagem. As datas de devolução aparecem quando registradas. Número do contrato e unidade de medida aparecem em branco quando não há dados cadastrados.
+Para a ficha, selecione **Ficha individual de EPI**, escolha o colaborador e clique em **Gerar ficha**. Os botões de impressão e PDF abrem o diálogo do navegador em A4 paisagem. As datas de devolução aparecem quando registradas. O número do contrato vem do estoque vinculado ou do registro de entrega anterior. Os campos sem dados ficam em branco na ficha.
 
 O painel e **Meus itens** destacam recebimentos pendentes de entregas que ainda não foram retiradas de uso. O relatório de **Pendências** inclui entregas sem confirmação pelo registro de recebimento, inclusive quando já existe uma retirada. Use o histórico pessoal para conferir essa situação.
 

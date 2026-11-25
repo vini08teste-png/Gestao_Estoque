@@ -26,12 +26,12 @@ async function signOut(page: Page) {
   await expect(page).toHaveURL(/\/login$/);
 }
 
-test("almoxarifado sem saldo aparece e a entrega anterior preserva o saldo", async ({ page }) => {
+test("contrato sem saldo aparece e a entrega anterior preserva o saldo", async ({ page }) => {
   const companyId = "tsa";
-  const name = `Almoxarifado novo ${scenario.tag}`;
+  const name = `Contrato novo ${scenario.tag}`;
   await signIn(page, scenario.manager);
-  await page.goto("/tsa/estoque?acao=almoxarifado");
-  await page.getByLabel("Nome do almoxarifado").fill(name);
+  await page.goto("/tsa/estoque?acao=contrato");
+  await page.getByLabel("Número do contrato").fill(name);
   await page.getByLabel("Unidade").selectOption(scenario.unit.id);
   await page.getByRole("button", { name: "Salvar", exact: true }).click();
   await expect(page).toHaveURL(/\/tsa\/estoque$/);
@@ -39,7 +39,7 @@ test("almoxarifado sem saldo aparece e a entrega anterior preserva o saldo", asy
   await expect(warehouseRow).toContainText("Aguardando primeira entrada");
   const warehouse = await db.warehouse.findFirstOrThrow({ where: { companyId, name } });
   await warehouseRow.getByRole("link", { name: "Registrar entrada" }).click();
-  await expect(page.getByRole("combobox", { name: "Almoxarifado", exact: true })).toHaveValue(warehouse.id);
+  await expect(page.getByRole("combobox", { name: "Número do contrato", exact: true })).toHaveValue(warehouse.id);
   await page.getByRole("combobox", { name: "Item", exact: true }).selectOption(scenario.uniform.item.id);
   await page.getByLabel("Quantidade").fill("2");
   await page.getByRole("button", { name: "Salvar", exact: true }).click();
@@ -48,7 +48,8 @@ test("almoxarifado sem saldo aparece e a entrega anterior preserva o saldo", asy
 
   await page.goto(`/tsa/entregas?edit=ficha&colaborador=${scenario.worker.id}`);
   await expect(page.getByLabel("Colaborador")).toHaveValue(scenario.worker.id);
-  await expect(page.getByLabel("Almoxarifado")).toHaveCount(0);
+  await expect(page.getByRole("combobox", { name: "Número do contrato" })).toHaveCount(0);
+  await page.getByRole("textbox", { name: /Número do contrato/ }).fill("CTR-HIST-001");
   await page.getByLabel("Item", { exact: true }).selectOption(scenario.uniform.item.id);
   await page.getByLabel("Quantidade").fill("4");
   await page.getByLabel("Data da entrega").fill("2025-10-07");
@@ -59,9 +60,21 @@ test("almoxarifado sem saldo aparece e a entrega anterior preserva o saldo", asy
   const recorded = await db.delivery.findFirstOrThrow({
     where: { companyId, employeeId: scenario.worker.id, warehouseId: null }, include: { movements: true, receipt: true },
   });
-  expect(recorded).toMatchObject({ lotId: null, quantity: 4, movements: [], receipt: null });
+  expect(recorded).toMatchObject({ lotId: null, quantity: 4, contractNumber: "CTR-HIST-001", movements: [], receipt: null });
+  const csv = await (await page.request.get("/exportar/tsa")).text();
+  expect(csv).toContain('"CTR-HIST-001"');
   const balance = await db.stock.findFirstOrThrow({ where: { companyId, warehouseId: warehouse.id } });
   expect(balance.quantity).toBe(2);
+
+  await page.goto("/tsa/estoque");
+  const priorContract = page.getByRole("row").filter({ hasText: scenario.warehouse.name }).filter({ hasText: "Informar número" });
+  await priorContract.getByRole("link", { name: "Informar número" }).click();
+  await page.getByLabel("Número do contrato").fill("CTR-OPER-001");
+  await page.getByRole("button", { name: "Salvar", exact: true }).click();
+  await expect(page.getByRole("row").filter({ hasText: "CTR-OPER-001" }).first()).toBeVisible();
+  await expect(page.getByRole("row").filter({ hasText: "CTR-OPER-001" }).filter({ hasText: scenario.uniform.item.name })).toContainText("4");
+  const linked = await db.warehouse.findUniqueOrThrow({ where: { companyId_id: { companyId, id: scenario.warehouse.id } } });
+  expect(linked).toMatchObject({ name: scenario.warehouse.name, contractNumber: "CTR-OPER-001" });
 
   await signOut(page);
   await signIn(page, scenario.employeeAccount);
@@ -73,7 +86,7 @@ test("almoxarifado sem saldo aparece e a entrega anterior preserva o saldo", asy
   await db.warehouse.update({ where: { companyId_id: { companyId, id: warehouse.id } }, data: { active: false } });
 });
 
-test("uma entrega por item usa o saldo combinado do almoxarifado", async ({ page }) => {
+test("uma entrega por item usa o saldo combinado do contrato", async ({ page }) => {
   const companyId = "tsa";
   const item = await db.equipment.create({ data: {
     companyId, name: `Uniforme com duas entradas ${scenario.tag}`, category: "UNIFORM", makerModel: "Teste", notes: "",
@@ -86,7 +99,7 @@ test("uma entrega por item usa o saldo combinado do almoxarifado", async ({ page
   await signIn(page, scenario.operator);
   await page.goto("/tsa/entregas?edit=novo");
   await page.getByLabel("Colaborador").selectOption(scenario.worker.id);
-  await page.getByLabel("Almoxarifado", { exact: true }).selectOption(warehouseId);
+  await page.getByLabel("Número do contrato", { exact: true }).selectOption(warehouseId);
   await page.getByLabel("Item", { exact: true }).selectOption(item.id);
   await page.getByLabel("Quantidade").fill("3");
   await page.getByRole("button", { name: "Salvar", exact: true }).click();
@@ -243,7 +256,7 @@ test("perfil Gerência rejeita um pedido com justificativa e aprova outro para e
   await page.setViewportSize({ width: 360, height: 800 });
   await page.goto("/tsa/solicitacoes?fila=prontos");
   await page.getByRole("article").filter({ hasText: approved.reason }).getByRole("link", { name: "Atender pedido" }).click();
-  await expect(page.getByLabel("Almoxarifado", { exact: true })).toHaveValue(scenario.warehouse.id);
+  await expect(page.getByLabel("Número do contrato", { exact: true })).toHaveValue(scenario.warehouse.id);
   await expect(page.locator(".delivery-summary")).toContainText(scenario.uniform.item.name);
   await page.getByRole("button", { name: "Confirmar entrega" }).click();
   await expect(page.getByRole("status")).toHaveText("Entrega registrada e saldo atualizado.");
@@ -289,7 +302,7 @@ test("duas entregas simultâneas para a última unidade geram uma baixa", async 
     await Promise.all([page, second].map(async (entry) => {
       await entry.goto("/tsa/entregas?edit=novo");
       await entry.getByLabel("Colaborador", { exact: true }).selectOption(scenario.worker.id);
-      await entry.getByLabel("Almoxarifado", { exact: true }).selectOption(scenario.warehouse.id);
+      await entry.getByLabel("Número do contrato", { exact: true }).selectOption(scenario.warehouse.id);
       await entry.getByLabel("Item", { exact: true }).selectOption(scenario.scarce.item.id);
       await expect(entry.getByLabel("Quantidade")).toHaveValue("1");
     }));
@@ -722,7 +735,7 @@ test("cadastra o item sem sair da entrega anterior ou da entrada de estoque", as
 
   await page.goto(`/tsa/estoque?acao=entrada&almoxarifado=${scenario.warehouse.id}`);
   await page.getByRole("button", { name: "Cadastrar novo item" }).click();
-  await expect(page.getByRole("combobox", { name: "Almoxarifado", exact: true })).toHaveValue(scenario.warehouse.id);
+  await expect(page.getByRole("combobox", { name: "Número do contrato", exact: true })).toHaveValue(scenario.warehouse.id);
   await page.getByRole("combobox", { name: "Tipo de item" }).selectOption("UNIFORM");
   await expect(page.getByLabel("CA", { exact: true })).toHaveCount(0);
   const uniformName = `Uniforme novo ${scenario.tag}`;
@@ -799,7 +812,7 @@ test("administrador corrige e apaga entregas com auditoria e saldo consistente",
   const balance = async () => (await db.stock.findUniqueOrThrow({ where: { companyId_warehouseId_lotId: key } })).quantity;
   await page.goto("/tsa/entregas?edit=novo");
   await page.getByRole("combobox", { name: "Colaborador" }).selectOption(scenario.worker.id);
-  await page.getByRole("combobox", { name: "Almoxarifado" }).selectOption(warehouseId);
+  await page.getByRole("combobox", { name: "Número do contrato" }).selectOption(warehouseId);
   await page.getByRole("combobox", { name: "Item", exact: true }).selectOption(item.id);
   await page.getByLabel("Quantidade").fill("3");
   await page.getByRole("button", { name: "Salvar", exact: true }).click();
@@ -929,6 +942,7 @@ test("captura, revisa e salva uma foto como comprovante de entrega", async ({ pa
 test("troca registra a data de devolução e conserva o saldo do item recebido para descarte", async ({ page }) => {
   const companyId = "tsa";
   const warehouseId = scenario.warehouse.id;
+  await db.warehouse.update({ where: { companyId_id: { companyId, id: warehouseId } }, data: { contractNumber: "CTR-FICHA-001" } });
   const originalItem = await db.equipment.create({ data: {
     companyId, name: `EPI antigo ${scenario.tag}`, category: "EPI", certificate: "33835", makerModel: "Teste", notes: "",
   } });
@@ -980,6 +994,7 @@ test("troca registra a data de devolução e conserva o saldo do item recebido p
   await expect(sheet).toContainText(scenario.worker.registration, { ignoreCase: true });
   await expect(sheet.getByRole("row").filter({ hasText: originalItem.name }).locator('[data-column="Nº do CA"]')).toHaveText("33835");
   await expect(sheet.getByText("11/04/2025")).toBeVisible();
+  await expect(sheet.getByText("CTR-FICHA-001", { exact: true }).first()).toBeVisible();
   await expect(sheet.locator('tbody [data-column^="Rubrica"]').first()).toBeEmpty();
   await expect(sheet.getByText("Setor")).toHaveCount(0);
   await page.emulateMedia({ media: "print" });

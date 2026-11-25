@@ -69,7 +69,7 @@ Consulte os guias de [deploy pelo GitHub](https://vercel.com/docs/git), [Postgre
 | O deploy abre, mas o login falha para todos | Confira a conexão de produção, as migrações e a criação do administrador. Após alterar a variável no Vercel, faça um novo deploy. |
 | O login local vai e volta para a tela de entrada | Confira se o app foi iniciado em modo de produção por HTTP local. Nesse caso use `LOCAL_HTTP=true` no processo local. |
 | Conta entra mas não tem acesso à empresa | Confira o vínculo ativo em **Acessos e perfis**. Colaborador e Gerência também precisam ter cadastro pessoal ativo. |
-| Entrega não lista almoxarifado ou item | Confira a unidade do destinatário e se o almoxarifado está ativo. Cadastre uma entrada para disponibilizar o item e confira o saldo disponível e a validade. |
+| Entrega não lista contrato ou item | Confira a unidade do destinatário e se o contrato está ativo. Cadastre uma entrada para disponibilizar o item e confira o saldo disponível e a validade. |
 | Banco e aplicativo parecem ter versões diferentes | Confira a versão publicada e as migrações aplicadas no mesmo ambiente antes de repetir o deploy. |
 
 O PostgreSQL guarda cadastros, saldos, movimentos, sessões e anexos. Inclua-o no backup e valide a restauração em um ambiente separado.

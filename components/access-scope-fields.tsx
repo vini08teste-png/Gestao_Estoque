@@ -35,7 +35,7 @@ export function AccessScopeFields({ employees, units, defaults }: {
     </div>
     {chooseUnits && <fieldset className="unit-choices">
       <legend>Unidades autorizadas</legend>
-      <p>{role === "WAREHOUSE" ? "O acesso vale para todos os almoxarifados das unidades selecionadas."
+      <p>{role === "WAREHOUSE" ? "O acesso vale para todos os contratos de estoque das unidades selecionadas."
         : "Selecione as unidades onde o gestor poderá operar."}</p>
       <label className="check"><input type="checkbox" name="allUnits" checked={allUnits}
         onChange={(event) => setAllUnits(event.target.checked)} /> Todas as unidades</label>

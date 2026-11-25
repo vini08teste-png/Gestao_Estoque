@@ -38,14 +38,14 @@ O aplicativo usa Next.js com App Router, React e TypeScript. As páginas protegi
 
 | Entidades | Como se relacionam |
 | --- | --- |
-| `Company`, `Unit`, `Warehouse` | Uma empresa tem unidades. Uma unidade pode ter vários almoxarifados. |
+| `Company`, `Unit`, `Warehouse` | Uma empresa tem unidades. Uma unidade pode ter vários contratos de estoque. |
 | `Employee` | Vincula a pessoa à empresa, à unidade e, quando aplicável, a outro colaborador como responsável da Gerência. A terceirizada é um campo opcional do cadastro. |
 | `User`, `UserScope`, `ScopeUnit` | Um e-mail identifica a conta. O vínculo por empresa define perfil, colaborador associado e unidades autorizadas. |
 | `Session`, `LoginAttempt` | Guardam as sessões e as janelas de tentativas de autenticação. |
-| `Equipment`, `EquipmentLot`, `Stock` | Entradas de um item são agrupadas internamente por validade. A chave do saldo inclui empresa, almoxarifado e lote interno. A tela soma por almoxarifado e item. |
+| `Equipment`, `EquipmentLot`, `Stock` | Entradas de um item são agrupadas internamente por validade. A chave do saldo inclui empresa, contrato de estoque e lote interno. A tela soma por contrato e item. |
 | `ExpectedItem` | Vincula um item e uma quantidade a uma função, uma unidade ou à combinação dos dois dentro da empresa. |
 | `StockMinimum` | Guarda o mínimo por empresa, unidade e item. O padrão é de cinco unidades. |
-| `StockMovement`, `Delivery` | Movimentos positivos registram entradas. Uma entrega pelo almoxarifado pode gerar mais de um movimento negativo. O registro de uma entrega anterior preserva o estoque. |
+| `StockMovement`, `Delivery` | Movimentos positivos registram entradas. Uma entrega com baixa de estoque pode gerar mais de um movimento negativo. O registro de uma entrega anterior preserva o estoque. |
 | `EquipmentRequest`, `ApprovalRule` | O pedido guarda solicitante, unidade, item ou descrição e situação. As regras guardam exigência de aprovação por unidade e, opcionalmente, por item. |
 | `DeliveryReceipt`, `DeliveryRetirement` | Registram a confirmação do destinatário e a retirada de uso com autor e horário. |
 | `DeliveryProof`, `ReplacementPhoto` | Guardam bytes, formato e hash dos anexos, vinculados à entrega ou à solicitação. |
