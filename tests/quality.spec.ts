@@ -574,7 +574,8 @@ test("colaborador terceirizado pode liderar a equipe da unidade onde atua", asyn
   await page.goto("/tsa/colaboradores?edit=novo");
   await page.getByLabel("Nome completo").fill(name);
   await page.getByLabel("Matrícula").fill(registration);
-  await page.getByLabel(/Empresa terceirizada/).fill("LUK");
+  await expect(page.getByLabel("Empresa", { exact: true })).toHaveAttribute("placeholder", "TSA");
+  await page.getByLabel("Empresa", { exact: true }).fill("LUK");
   await page.locator('select[name="unit"]').selectOption(scenario.unit.id);
   await page.getByLabel("Setor").fill("Operação");
   await page.getByLabel("Função").fill("Responsável da Gerência");
@@ -583,6 +584,13 @@ test("colaborador terceirizado pode liderar a equipe da unidade onde atua", asyn
   await page.goto("/tsa/colaboradores?q=luk");
   const contractor = page.getByRole("row").filter({ hasText: name });
   await expect(contractor.getByRole("cell", { name: "LUK", exact: true })).toBeVisible();
+  const actions = contractor.getByRole("button", { name: `Ações de ${name}` });
+  await expect(contractor.getByRole("link", { name: /Configurar acesso/ })).toBeHidden();
+  await actions.press("Enter");
+  await expect(contractor.getByRole("link", { name: /Configurar acesso/ })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(contractor.getByRole("link", { name: /Configurar acesso/ })).toBeHidden();
+  await actions.click();
   await contractor.getByRole("link", { name: /Configurar acesso/ }).click();
   await expect(page.locator('select[name="employee"] option:checked')).toContainText("LUK");
   await page.getByLabel(/E-mail usado no login/).fill(email);
@@ -591,6 +599,9 @@ test("colaborador terceirizado pode liderar a equipe da unidade onde atua", asyn
   await page.getByRole("button", { name: "Salvar e continuar" }).click();
   await expect(page.getByRole("status")).toHaveText("Alterações salvas.");
   const worker = await db.employee.findFirstOrThrow({ where: { companyId, name, contractorCompany: "LUK" } });
+  await page.goto("/tsa/colaboradores");
+  await expect(page.getByRole("row").filter({ hasText: name }).getByRole("cell", { name: "LUK", exact: true })).toBeVisible();
+  await expect(page.getByRole("row").filter({ hasText: scenario.worker.name }).getByRole("cell", { name: "TSA", exact: true })).toBeVisible();
   const scope = await db.userScope.findFirstOrThrow({ where: { companyId, user: { email } } });
   expect(scope).toMatchObject({ role: "SUPERVISOR", employeeId: worker.id });
 

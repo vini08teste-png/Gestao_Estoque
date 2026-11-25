@@ -83,7 +83,7 @@ export async function saveEmployee(companyId: string, id: string | null, _: Form
     const unitId = required(data, "unit", "a unidade");
     const supervisorId = scope.role === "SUPERVISOR" ? scope.employee?.id ?? null : text(data, "supervisor") || null;
     const contractorCompany = text(data, "contractorCompany");
-    if (contractorCompany.length > 120) throw new FormError("Informe a empresa terceirizada com até 120 caracteres.");
+    if (contractorCompany.length > 120) throw new FormError("Informe o nome da empresa com até 120 caracteres.");
     const values = {
       unitId,
       supervisorId,

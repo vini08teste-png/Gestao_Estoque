@@ -8,7 +8,7 @@ Use o sistema para consultar o saldo por contrato, acompanhar pedidos, conferir 
 | --- | --- |
 | Empresa | TSA ou TSA Lynx. Define o tema e o conjunto de dados em uso. |
 | Unidade | Local de trabalho do colaborador. Organiza equipes e contratos de estoque. |
-| Terceirizada | Empregador informado no cadastro de uma pessoa que atua em uma unidade. |
+| Empresa | Empregador informado no cadastro. Quando o campo está em branco, aparece TSA ou TSA Lynx conforme a empresa do cadastro. |
 | Item | EPI ou uniforme cadastrado, com nome, fabricante/modelo e, para EPI, dados do CA. |
 | Saldo | Quantidade de um item em um contrato específico. |
 | Entrega | Registro criado pelo operador no momento em que dá baixa no estoque. |

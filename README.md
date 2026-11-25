@@ -41,7 +41,7 @@ Todo usuário com um colaborador ativo vinculado tem acesso a **Meus itens** e a
 
 Em **Colaboradores**, um administrador pode abrir **Configurar acesso** para informar o e-mail usado no login, vincular a pessoa e escolher seu perfil. Para **Operador de estoque** e **Gestor**, selecione as unidades autorizadas. Para **Gerência**, indique a pessoa no campo **Responsável da Gerência** do cadastro de cada integrante da equipe.
 
-Para terceiros, informe o empregador em **Empresa terceirizada**, por exemplo, LUK. O cadastro fica na empresa do grupo e na unidade onde a pessoa atua. O gestor pode conceder o perfil **Gerência** em **Equipe → Dar acesso de Gerência** para colaboradores ativos de suas unidades, inclusive terceirizados.
+Para terceiros, informe o empregador em **Empresa**, por exemplo, LUK. O cadastro fica na empresa do grupo e na unidade onde a pessoa atua. O gestor pode conceder o perfil **Gerência** em **Equipe → Dar acesso de Gerência** para colaboradores ativos de suas unidades, inclusive terceirizados.
 
 **Trocar senha** fica no menu da conta. Para recuperar uma senha esquecida, um administrador pode abrir **Acessos e perfis**, editar a conta e usar **Redefinir senha**. A redefinição encerra as sessões da conta e exige a troca da senha temporária no login. Para uma conta vinculada a mais de uma empresa, o administrador precisa administrar todas elas.
 

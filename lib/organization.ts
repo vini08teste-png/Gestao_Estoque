@@ -16,6 +16,10 @@ export const companyBrands = {
 export const inventoryTitle = "Estoque";
 export const contractNumberLabel = "Número do contrato";
 
+export function employeeCompanyName(company: string, contractorCompany?: string | null) {
+  return contractorCompany?.trim() || company;
+}
+
 export function stockContractLabel(stock: { contractNumber: string | null; name: string }) {
   return stock.contractNumber ?? `${stock.name} · Contrato não informado`;
 }

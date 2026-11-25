@@ -2,10 +2,11 @@
 
 import { useState } from "react";
 import type { Role } from "@/generated/prisma/enums";
-import { roles } from "@/lib/organization";
+import { employeeCompanyName, roles } from "@/lib/organization";
 
-export function AccessScopeFields({ employees, units, defaults }: {
+export function AccessScopeFields({ employees, companyName, units, defaults }: {
   employees: { id: string; name: string; contractorCompany: string | null; unit: { name: string } }[];
+  companyName: string;
   units: { id: string; name: string }[];
   defaults: { role: Role; employeeId: string; allUnits: boolean; unitIds: string[] };
 }) {
@@ -26,7 +27,7 @@ export function AccessScopeFields({ employees, units, defaults }: {
         <select name="employee" defaultValue={defaults.employeeId} required={needsEmployee}>
           <option value="">{needsEmployee ? "Selecione a pessoa" : "Sem vínculo pessoal"}</option>
           {employees.map((person) => <option key={person.id} value={person.id}>
-            {person.name}{person.contractorCompany && ` · ${person.contractorCompany}`} · {person.unit.name}</option>)}
+            {person.name} · {employeeCompanyName(companyName, person.contractorCompany)} · {person.unit.name}</option>)}
         </select>
         <small>{role === "SUPERVISOR" ? "O cadastro determina a unidade. Monte a equipe selecionando esta pessoa no campo Responsável da Gerência do cadastro de cada integrante."
           : role === "EMPLOYEE" ? "Usa a unidade do cadastro para abrir pedidos pessoais."

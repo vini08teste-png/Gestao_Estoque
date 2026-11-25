@@ -11,7 +11,7 @@ import { sections, Workspace, type Section } from "@/components/workspace";
 import { canAdminister, requireScope, type AccessScope } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { canAddEmployees, canGrantSupervisorAccess, employeesWhere, unitsWhere } from "@/lib/directory";
-import { companyBrands, isCompany, roles } from "@/lib/organization";
+import { companyBrands, employeeCompanyName, isCompany, roles } from "@/lib/organization";
 import { passwordLength } from "@/lib/password";
 import type { Role } from "@/generated/prisma/enums";
 
@@ -149,10 +149,12 @@ async function Employees({ scope, edit, supervisorAccess, query, status, filters
               <div className="form-grid">
                 <TextField name="registration" label="Matrícula" value={current?.registration} max={32} />
                 <TextField name="name" label="Nome completo" value={current?.name} />
-                <label className="field">Empresa terceirizada (opcional)
-                  <input name="contractorCompany" defaultValue={current?.contractorCompany ?? ""} maxLength={120} placeholder="Ex.: LUK" />
-                  <small>Informe a empresa empregadora se o colaborador for terceirizado.</small>
-                </label>
+                <div className="field">
+                  <label htmlFor="employee-company">Empresa</label>
+                  <input id="employee-company" name="contractorCompany" defaultValue={current?.contractorCompany ?? ""}
+                    maxLength={120} placeholder={scope.company.name} aria-describedby="employee-company-help" />
+                  <small id="employee-company-help">Deixe em branco para usar {scope.company.name}. Para terceirizados, informe a empresa empregadora, como LUK.</small>
+                </div>
                 <label className="field">Unidade<select name="unit" defaultValue={current?.unitId ?? ""} required>
                   <option value="" disabled>Selecione</option>
                   {units.map((unit) => <option key={unit.id} value={unit.id}>{unit.name}{!unit.active ? " (inativa)" : ""}</option>)}
@@ -160,7 +162,7 @@ async function Employees({ scope, edit, supervisorAccess, query, status, filters
                 {scope.role !== "SUPERVISOR" && <label className="field">Responsável da Gerência<select name="supervisor" defaultValue={current?.supervisorId ?? ""}>
                   <option value="">Sem responsável da Gerência</option>
                   {people.map((person) => <option key={person.id} value={person.id}>
-                    {person.name}{person.contractorCompany && ` · ${person.contractorCompany}`} · {person.unit.name}</option>)}
+                    {person.name} · {employeeCompanyName(scope.company.name, person.contractorCompany)} · {person.unit.name}</option>)}
                 </select><small>Escolha o responsável da Gerência da mesma unidade. A pessoa pode ser de uma empresa terceirizada.</small></label>}
                 <TextField name="department" label="Setor" value={current?.department} />
                 <TextField name="jobTitle" label="Função" value={current?.jobTitle} />
@@ -180,6 +182,7 @@ async function Employees({ scope, edit, supervisorAccess, query, status, filters
         { name: { contains: query, mode: "insensitive" } },
         { registration: { contains: query, mode: "insensitive" } },
         { contractorCompany: { contains: query, mode: "insensitive" } },
+        ...(scope.company.name.toLocaleLowerCase("pt-BR").includes(query.toLocaleLowerCase("pt-BR")) ? [{ contractorCompany: null }] : []),
       ] } : {}),
     },
     include: { unit: { select: { name: true } }, supervisor: { select: { id: true, name: true } }, scope: { select: { userId: true, role: true, active: true } } },
@@ -191,7 +194,7 @@ async function Employees({ scope, edit, supervisorAccess, query, status, filters
         action={canCreate && <NewLink base={base}>Novo colaborador</NewLink>} />
       {scope.role !== "EMPLOYEE" && !team && (
         <form className="filters" action={base}>
-          <label className="field">Nome, matrícula ou terceirizada<input name="q" type="search" maxLength={80} defaultValue={query} /></label>
+          <label className="field">Nome, matrícula ou empresa<input name="q" type="search" maxLength={80} defaultValue={query} /></label>
           <label className="field">Situação<select name="status" defaultValue={status}>
             <option value="">Todas</option><option value="ativo">Ativo</option><option value="inativo">Inativo</option>
           </select></label>
@@ -199,16 +202,21 @@ async function Employees({ scope, edit, supervisorAccess, query, status, filters
         </form>
       )}
       {team ? <TeamOverview scope={scope} people={people} search={query} status={status} filters={filters} /> :
-      <Table label={title} columns={["Matrícula", "Nome", "Empresa terceirizada", "Unidade", "Setor", "Função", "Responsável da Gerência", "Situação", ...(admin ? ["Ação"] : [])]}
-        rows={people.map((person) => [person.id, person.registration, person.name, person.contractorCompany ?? "—", person.unit.name, person.department,
+      <Table label={title} columns={["Matrícula", "Nome", "Empresa", "Unidade", "Setor", "Função", "Responsável da Gerência", "Situação", ...(admin ? ["Ação"] : [])]}
+        rows={people.map((person) => [person.id, person.registration, person.name, employeeCompanyName(scope.company.name, person.contractorCompany), person.unit.name, person.department,
           person.jobTitle, person.supervisor?.name ?? "—", <Status active={person.active} />,
-          ...(admin ? [<div className="row-actions">
-            <EditLink base={base} id={person.id} label={person.name} />
-            <Link className="text-action" aria-label={`Configurar acesso de ${person.name}`}
-              href={`/${companyId}/usuarios?${person.scope ? `edit=${encodeURIComponent(person.scope.userId)}` :
-                `edit=novo&colaborador=${encodeURIComponent(person.id)}`}`}>Configurar acesso</Link>
-            {person.active && <Link className="text-action" aria-label={`Registrar entregas anteriores de ${person.name}`}
-              href={`/${companyId}/entregas?edit=ficha&colaborador=${encodeURIComponent(person.id)}`}>Registrar entregas anteriores</Link>}
+          ...(admin ? [<div>
+            <button type="button" className="button row-actions-trigger" popoverTarget={`employee-actions-${person.id}`}
+              aria-label={`Ações de ${person.name}`} title="Ações">⋯</button>
+            <div id={`employee-actions-${person.id}`} className="panel row-actions-popover" popover="auto" role="group"
+              aria-label={`Ações de ${person.name}`}>
+              <EditLink base={base} id={person.id} label={person.name} />
+              <Link className="text-action" aria-label={`Configurar acesso de ${person.name}`}
+                href={`/${companyId}/usuarios?${person.scope ? `edit=${encodeURIComponent(person.scope.userId)}` :
+                  `edit=novo&colaborador=${encodeURIComponent(person.id)}`}`}>Configurar acesso</Link>
+              {person.active && <Link className="text-action" aria-label={`Registrar entregas anteriores de ${person.name}`}
+                href={`/${companyId}/entregas?edit=ficha&colaborador=${encodeURIComponent(person.id)}`}>Registrar entregas anteriores</Link>}
+            </div>
           </div>] : [])])} />}
     </>
   );
@@ -251,7 +259,7 @@ async function Users({ scope, edit, viewerId, profile, employeeId }: {
                 </label>
               )}
             </div>
-            <AccessScopeFields employees={employees} units={units} defaults={{
+            <AccessScopeFields employees={employees} companyName={scope.company.name} units={units} defaults={{
               role: current?.role ?? profile ?? "EMPLOYEE", employeeId: current?.employeeId ?? person?.id ?? "",
               allUnits: current?.allUnits ?? false, unitIds: current?.units.map(({ unitId }) => unitId) ?? [],
             }} />

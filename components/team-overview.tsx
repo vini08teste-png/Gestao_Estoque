@@ -9,6 +9,7 @@ import { canGrantSupervisorAccess } from "@/lib/directory";
 import { operationalDeliveryWhere, requestWhere } from "@/lib/equipment-access";
 import { brazilDay, formatDay, itemsInUse, jobTitleKey, latestByItem, plusDays, requestLabels, todayInBrazil } from "@/lib/equipment";
 import { openRequestStatuses, type Query } from "@/lib/reporting";
+import { employeeCompanyName } from "@/lib/organization";
 
 type TeamMember = {
   id: string;
@@ -88,7 +89,8 @@ export async function TeamOverview({ scope, people, search, status, filters }: {
     (!status || person.active === (status === "ativo")) &&
     (!unit || person.unitId === unit) && (!department || person.department === department) &&
     (!supervisor || (person.supervisor?.id ?? "sem-encarregado") === supervisor) &&
-    (!needle || [person.name, person.registration, person.contractorCompany].some((value) => value?.toLocaleLowerCase("pt-BR").includes(needle))));
+    (!needle || [person.name, person.registration, employeeCompanyName(scope.company.name, person.contractorCompany)]
+      .some((value) => value.toLocaleLowerCase("pt-BR").includes(needle))));
   const employeeId = { in: scopedPeople.map(({ id }) => id) };
   const [deliveries, requests, expected] = await Promise.all(scopedPeople.length ? [
     db.delivery.findMany({
@@ -225,7 +227,7 @@ export async function TeamOverview({ scope, people, search, status, filters }: {
         </summary>
         <div className="team-member-role">
           <p>{person.unit.name} · {person.department}{person.supervisor && ` · Responsável da Gerência: ${person.supervisor.name}`}
-            {person.contractorCompany && ` · Terceirizada: ${person.contractorCompany}`}{supervisorAccess && " · Perfil Gerência"}</p>
+            {" · "}{employeeCompanyName(scope.company.name, person.contractorCompany)}{supervisorAccess && " · Perfil Gerência"}</p>
           {person.active && <details className="team-actions">
             <summary className="button" aria-label={`Ações de ${person.name}`} title="Ações"><span aria-hidden="true">⋯</span></summary>
             <div className="panel">

@@ -18,7 +18,7 @@ O seletor de empresa aparece para quem está na empresa atual como administrador
 
 1. Na empresa onde a pessoa atua, abra **Colaboradores → Novo colaborador**. Para gestor, a tela se chama **Equipe**. Para Gerência, **Minha equipe**.
 2. Informe nome, matrícula, unidade, setor e função. A matrícula é única dentro da empresa e é armazenada em maiúsculas.
-3. Se houver terceirização, preencha **Empresa terceirizada** com o empregador, por exemplo, **LUK**. O campo é opcional e pode ser pesquisado na lista.
+3. Em **Empresa**, informe o empregador quando houver terceirização, por exemplo, **LUK**. Se deixar em branco, o sistema mostra **TSA** ou **TSA Lynx** conforme a empresa do cadastro. A busca aceita o nome da empresa.
 4. Selecione o **Responsável da Gerência** da mesma unidade, quando aplicável, e salve. Quando alguém da Gerência faz o cadastro, o sistema vincula o novo integrante à equipe dessa pessoa. O sistema impede vínculos que criariam um ciclo na equipe.
 
 O administrador edita registros existentes. Para corrigir a unidade de um cadastro já relacionado a outros registros, confira os vínculos antes de salvar. Alguns vínculos podem impedir a movimentação direta.
