@@ -53,7 +53,7 @@ export function ItemCategoryFields({ companyId, initial, certificate, expires, n
   function useCertificate(entry: Certificate, overwrite = false) {
     const maker = [entry.manufacturer, entry.reference].filter(Boolean).join(" · ");
     const values = [
-      [nameInput.current, entry.name], [makerInput.current, maker.length <= 120 ? maker : entry.manufacturer],
+      [nameInput.current, entry.name.toLocaleUpperCase("pt-BR")], [makerInput.current, maker.length <= 120 ? maker : entry.manufacturer],
       [expiryInput.current, entry.expires],
     ] as const;
     for (const [input, value] of values) {
@@ -126,7 +126,8 @@ export function ItemCategoryFields({ companyId, initial, certificate, expires, n
       </div>}
       <label className="field">Validade do CA<input ref={expiryInput} name="caExpiresAt" type="date" defaultValue={expires} required /></label>
     </>}
-    <label className="field">Nome do item<input ref={nameInput} name="name" defaultValue={name} maxLength={120} required /></label>
+    <label className="field">Nome do item<input ref={nameInput} name="name" defaultValue={name} maxLength={120} required
+      onBlur={({ currentTarget }) => { currentTarget.value = currentTarget.value.toLocaleUpperCase("pt-BR"); }} /></label>
     <label className="field">Fabricante e modelo<input ref={makerInput} name="makerModel" defaultValue={makerModel} maxLength={120} required /></label>
   </>;
 }

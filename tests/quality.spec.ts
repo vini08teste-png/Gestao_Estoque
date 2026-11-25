@@ -786,7 +786,7 @@ test("cadastra o item sem sair da entrega anterior ou da entrada de estoque", as
   await page.getByLabel("Fabricante e modelo").fill("Fabricante de teste");
   await page.getByRole("button", { name: "Salvar e continuar" }).click();
   await expect(page.getByText("Entrega anterior registrada.")).toBeVisible();
-  const epi = await db.equipment.findFirstOrThrow({ where: { companyId, name: epiName },
+  const epi = await db.equipment.findFirstOrThrow({ where: { companyId, name: epiName.toLocaleUpperCase("pt-BR") },
     include: { deliveries: true, lots: true } });
   expect(epi).toMatchObject({ certificate: "12345", lots: [], deliveries: [{ employeeId: scenario.worker.id, quantity: 2, warehouseId: null }] });
 
@@ -809,7 +809,7 @@ test("cadastra o item sem sair da entrega anterior ou da entrada de estoque", as
   await page.getByLabel("Quantidade").fill("3");
   await page.getByRole("button", { name: "Salvar e continuar" }).click();
   await expect(page.getByRole("status")).toHaveText("Entrada registrada.");
-  const uniform = await db.equipment.findFirstOrThrow({ where: { companyId, name: uniformName },
+  const uniform = await db.equipment.findFirstOrThrow({ where: { companyId, name: uniformName.toLocaleUpperCase("pt-BR") },
     include: { lots: { include: { stocks: true } } } });
   expect(uniform).toMatchObject({ category: "UNIFORM", certificate: null, lots: [{ stocks: [{ warehouseId: scenario.warehouse.id, quantity: 3 }] }] });
 
@@ -1099,7 +1099,7 @@ test("consulta a base importada e pede escolha para um CA com variantes", async 
   await page.getByLabel("CA", { exact: true }).fill("00013");
   await page.getByRole("button", { name: "Consultar CA" }).click();
   await expect(page.getByRole("status")).toContainText(exportedOn.split("-").reverse().join("/"));
-  await expect(page.getByLabel("Nome do item")).toHaveValue(entry.name);
+  await expect(page.getByLabel("Nome do item")).toHaveValue(entry.name.toLocaleUpperCase("pt-BR"));
   await expect(page.getByLabel("Validade do CA")).toHaveValue(entry.expires);
   await page.getByLabel("CA", { exact: true }).fill("7536");
   await page.getByRole("button", { name: "Consultar CA" }).click();

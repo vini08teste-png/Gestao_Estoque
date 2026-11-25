@@ -74,7 +74,7 @@ function equipmentValues(data: FormData) {
   const category = text(data, "category");
   if (category !== "EPI" && category !== "UNIFORM") return invalid("Selecione o tipo de item.");
   return {
-    name: field(data, "name", "Nome"),
+    name: field(data, "name", "Nome").toLocaleUpperCase("pt-BR"),
     category: category as ItemCategory,
     makerModel: field(data, "makerModel", "Fabricante e modelo"),
     certificate: category === "EPI" ? field(data, "certificate", "CA", 60) : null,
