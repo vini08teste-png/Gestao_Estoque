@@ -27,7 +27,7 @@ A [documentação do sistema](docs/README.md) detalha o comportamento implementa
 ## 4. Perfis
 - **Administrador:** usuários, empresas, unidades, contratos, configurações e regras de aprovação.
 - **Gestor:** cadastro de colaboradores, concessão do perfil Gerência, operação de estoque e entregas, e acompanhamento das unidades autorizadas.
-- **Gerência:** cadastro e consulta da equipe direta, atendimento de solicitações no seu escopo e operação de estoque da unidade. Pode decidir solicitações da equipe quando a aprovação estiver ativada.
+- **Gerência:** cadastro e acompanhamento da equipe, atendimento de solicitações e operação de estoque do contrato vinculado. Pode decidir solicitações da equipe quando a aprovação estiver ativada.
 - **Operador de estoque:** estoque, entradas, entregas e atendimento de solicitações.
 - **Colaborador:** consulta de seus itens, confirmação do recebimento e abertura/acompanhamento de solicitações.
 - O usuário com cadastro de colaborador ativo vinculado também tem acesso à área pessoal.
@@ -36,7 +36,7 @@ A [documentação do sistema](docs/README.md) detalha o comportamento implementa
 ## 5. Módulos V1
 1. Login e seleção de empresa quando autorizado.
 2. Dashboard por perfil.
-3. Colaboradores: matrícula, nome, empresa do grupo, empresa terceirizada quando houver, unidade, contrato, função, Gerência e situação.
+3. Colaboradores: matrícula, nome, empresa do grupo, empresa terceirizada quando houver, unidade, contrato, função e situação.
 4. Cadastro de itens: tipo EPI ou uniforme, nome, fabricante/modelo e observações. Para EPI, CA e sua validade, com consulta à base importada do CAEPI.
 5. Estoque: item, validade opcional do produto, quantidade por contrato, entradas e baixas.
 6. Histórico: entregas com baixa e registros de fichas de papel com o saldo preservado. Ambos guardam colaborador, item, quantidade, data, responsável e anexo opcional. A confirmação digital do destinatário se aplica às entregas com baixa.
@@ -48,7 +48,7 @@ A [documentação do sistema](docs/README.md) detalha o comportamento implementa
 ## 6. Regras de negócio
 - Cada colaborador pertence a uma empresa e unidade; matrícula única no escopo da empresa.
 - A empresa terceirizada identifica o empregador. O administrador ou o gestor da unidade pode conceder a um colaborador terceirizado o perfil Gerência na unidade em que atua.
-- Cada contrato de estoque pertence a uma unidade.
+- Cada contrato de estoque pertence a uma unidade. Várias pessoas com o perfil Gerência podem operar o mesmo contrato. O campo Função registra o cargo da pessoa.
 - A baixa de estoque e o registro da entrega ocorrem em uma transação atômica que impede estoque negativo. A confirmação de recebimento é feita depois pelo destinatário.
 - Nova entrega de substituição acrescenta um registro ao histórico.
 - O destinatário confirma o recebimento. O sistema registra quem confirmou e quando.

@@ -32,7 +32,7 @@ export const loadViewer = cache(async () => {
             include: {
               company: true,
               units: { select: { unitId: true } },
-              employee: { select: { id: true, unitId: true, active: true } },
+              employee: { select: { id: true, unitId: true, contractId: true, active: true } },
             },
           },
         },
@@ -62,11 +62,19 @@ export async function requireScope(companyId: string) {
 export type AccessScope = Awaited<ReturnType<typeof requireScope>>["scope"];
 export const canAdminister = (scope: AccessScope) => scope.role === "ADMIN" && scope.allUnits;
 
+function newSession(userId: string) {
+  const token = randomBytes(32).toString("hex");
+  return { token, data: { tokenHash: digest(token), userId, expiresAt: new Date(Date.now() + ttl) } };
+}
+
+function setSessionCookie(jar: Awaited<ReturnType<typeof cookies>>, session: ReturnType<typeof newSession>) {
+  jar.set(cookieName, session.token, { httpOnly: true, secure, sameSite: "lax", path: "/", expires: session.data.expiresAt });
+}
+
 export async function createSession(userId: string, expectedHash: string) {
   const jar = await cookies();
   const priorToken = await sessionToken();
-  const token = randomBytes(32).toString("hex");
-  const expiresAt = new Date(Date.now() + ttl);
+  const session = newSession(userId);
   const created = await db.$transaction(async (tx) => {
     const matched = await tx.$queryRaw<{ id: string }[]>`
       SELECT id FROM "User" WHERE id = ${userId} AND "passwordHash" = ${expectedHash} FOR UPDATE
@@ -76,11 +84,29 @@ export async function createSession(userId: string, expectedHash: string) {
       where: { OR: [{ expiresAt: { lte: new Date() } }, ...(priorToken ? [{ tokenHash: priorToken }] : [])] },
     });
     await tx.loginAttempt.deleteMany({ where: { startedAt: { lt: new Date(Date.now() - 24 * 60 * 60 * 1000) } } });
-    await tx.session.create({ data: { tokenHash: digest(token), userId, expiresAt } });
+    await tx.session.create({ data: session.data });
     return true;
   });
   if (!created) return false;
-  jar.set(cookieName, token, { httpOnly: true, secure, sameSite: "lax", path: "/", expires: expiresAt });
+  setSessionCookie(jar, session);
+  return true;
+}
+
+export async function updatePasswordAndSession(userId: string, expectedHash: string, passwordHash: string) {
+  const jar = await cookies();
+  const session = newSession(userId);
+  const updated = await db.$transaction(async (tx) => {
+    const result = await tx.user.updateMany({
+      where: { id: userId, passwordHash: expectedHash },
+      data: { passwordHash, mustChangePassword: false },
+    });
+    if (!result.count) return false;
+    await tx.session.deleteMany({ where: { userId } });
+    await tx.session.create({ data: session.data });
+    return true;
+  });
+  if (!updated) return false;
+  setSessionCookie(jar, session);
   return true;
 }
 

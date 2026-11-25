@@ -350,7 +350,7 @@ const reportColumnLines: Record<string, [string, string]> = {
   "Número do contrato": ["Número", "do contrato"],
   "Data de entrega": ["Data de", "entrega"],
   "Data de devolução": ["Data de", "devolução"],
-  "Rubrica de entrega": ["Rubrica de", "entrega"],
+  "Rubrica do empregado": ["Rubrica do", "empregado"],
   "Rubrica de devolução": ["Rubrica de", "devolução"],
 };
 const reportCompactColumns = new Set([
@@ -372,7 +372,8 @@ function ReportTable({ data, label, sheet = false }: {
       <tbody>{(sheet ? data.rows : data.rows.slice(0, 200)).map((row, index) => <tr key={index}>{row.map((cell, position) => {
         const column = data.columns[position];
         return <td key={column} data-column={column} className={reportCompactColumns.has(column) ? "report-compact-value" : undefined}>
-          {typeof cell === "object" ? <><strong>{cell.name}</strong><small>Matrícula {cell.registration}</small></> :
+          {typeof cell === "object" ? "href" in cell ? <Link className="text-action receipt-code" href={cell.href}>{cell.label}</Link> :
+            <><strong>{cell.name}</strong><small>Matrícula {cell.registration}</small></> :
             cell === "" && !sheet ? "—" : cell}
         </td>;
       })}</tr>)}</tbody>

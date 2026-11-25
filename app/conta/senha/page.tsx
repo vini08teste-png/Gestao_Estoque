@@ -12,7 +12,7 @@ export default async function PasswordPage() {
     <header className="page-heading"><div>
       <h1>{viewer.mustChangePassword ? "Crie sua nova senha" : "Trocar senha"}</h1>
       <p>{viewer.mustChangePassword ? "Use a senha temporária no primeiro campo e escolha a nova senha para continuar."
-        : "Ao salvar, entre novamente com a nova senha."}</p>
+        : "Ao salvar, você volta à área de trabalho com a sessão ativa."}</p>
     </div>
     {viewer.mustChangePassword ? <form action={logout}><button className="button" type="submit">Sair</button></form>
       : <Link className="button" href="/">Voltar à área de trabalho</Link>}</header>

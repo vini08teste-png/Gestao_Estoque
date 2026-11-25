@@ -1,6 +1,6 @@
 "use server";
 
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { notFound, redirect } from "next/navigation";
 import { Prisma } from "@/generated/prisma/client";
@@ -8,12 +8,13 @@ import type { ItemCategory, RetirementReason } from "@/generated/prisma/enums";
 import { canAdminister, requireScope, type AccessScope } from "@/lib/auth";
 import { attachmentLimit, replacementPhotoTypes } from "@/lib/attachment-limits";
 import { db } from "@/lib/db";
-import { employeesWhere, unitsWhere } from "@/lib/directory";
+import { contractStockWhere, employeesWhere, unitsWhere } from "@/lib/directory";
 import { canSetStockMinimum, deliveryCorrectionFields, handlesStock, hasPersonalEquipment, ownEmployeeId, requestWhere } from "@/lib/equipment-access";
 import { brazilDay, jobTitleKey, retirementLabels, todayInBrazil } from "@/lib/equipment";
 import { text, type FormResult } from "@/lib/forms";
 import { finishSave } from "@/lib/form-navigation";
 import { contractNumberLabel } from "@/lib/organization";
+import { receiptHash, receiptPreview, receiptTerm } from "@/lib/receipt-signature";
 import { availableLotWhere } from "@/lib/stock-availability";
 
 class InputError extends Error {}
@@ -50,7 +51,7 @@ async function mutate(companyId: string, allowed: (scope: AccessScope) => boolea
         include: {
           company: true,
           units: { select: { unitId: true } },
-          employee: { select: { id: true, unitId: true, active: true } },
+          employee: { select: { id: true, unitId: true, contractId: true, active: true } },
         },
       });
       if (!current || !allowed(current)) return invalid("Seu acesso mudou. Atualize a página.");
@@ -115,13 +116,14 @@ export async function saveWarehouse(companyId: string, warehouseId: string, _: F
     const contractNumber = field(data, "contractNumber", contractNumberLabel);
     if (warehouseId) {
       const updated = await tx.warehouse.updateMany({
-        where: { companyId, id: warehouseId, active: true, unit: { ...unitsWhere(scope), active: true },
+        where: { companyId, AND: [{ id: warehouseId }, contractStockWhere(scope)], active: true, unit: { ...unitsWhere(scope), active: true },
           ...(!canAdminister(scope) && { contractNumber: null }) },
         data: { contractNumber },
       });
       if (!updated.count) return invalid("Registro de estoque indisponível no seu escopo.");
       return;
     }
+    if (scope.role === "SUPERVISOR") return invalid("Peça a um administrador ou gestor para cadastrar o contrato.");
     const unitId = field(data, "unit", "Unidade");
     const unit = await tx.unit.findFirst({ where: { AND: [unitsWhere(scope), { id: unitId, active: true }] } });
     if (!unit) return invalid("Selecione uma unidade ativa no seu escopo.");
@@ -136,7 +138,7 @@ export async function addStock(companyId: string, movementId: string, _: FormRes
     const warehouseId = field(data, "warehouse", contractNumberLabel);
     const quantity = count(data);
     const warehouse = await tx.warehouse.findFirst({
-      where: { companyId, id: warehouseId, active: true, unit: { ...unitsWhere(scope), active: true } },
+      where: { companyId, AND: [{ id: warehouseId }, contractStockWhere(scope)], active: true, unit: { ...unitsWhere(scope), active: true } },
     });
     if (!warehouse) return invalid("Selecione um registro de estoque ativo da sua unidade.");
     const date = text(data, "expiresAt");
@@ -432,6 +434,9 @@ export async function registerDelivery(companyId: string, id: string, requestId:
     }
     const proof = await readAttachment(data, "proof");
     const warehouseId = paper ? null : field(data, "warehouse", contractNumberLabel);
+    if (warehouseId && scope.role === "SUPERVISOR" && warehouseId !== scope.employee?.contractId) {
+      return invalid("Selecione o estoque do seu contrato.");
+    }
     const contractNumber = paper ? field(data, "contractNumber", contractNumberLabel, 120, true) || null : null;
     const stocks = warehouseId ? await deliveryStock(tx, companyId, warehouseId, equipmentId, employee.unitId, today) : [];
     if (warehouseId && !stocks.length) {
@@ -489,6 +494,7 @@ export async function editDelivery(companyId: string, id: string, _: FormResult,
       _count: { select: { replacementRequests: true } }, proof: { select: { sha256: true } },
     } });
     if (!delivery) return invalid("Entrega indisponível no histórico.");
+    if (delivery.receipt?.verificationCode) return invalid("Esta entrega tem assinatura eletrônica e precisa permanecer no histórico.");
     const note = field(data, "note", "Motivo da correção", 500);
     const deliveredAt = parseDay(text(data, "deliveredAt"));
     const today = todayInBrazil();
@@ -541,11 +547,13 @@ export async function voidDelivery(companyId: string, id: string, _: FormResult,
   const result = await mutate(companyId, canAdminister, async (tx, _scope, actorId) => {
     const key = { companyId_id: { companyId, id } };
     const delivery = await tx.delivery.findUnique({ where: key, select: { voidedAt: true, warehouseId: true, quantity: true, requestId: true, returnedQuantity: true,
+      receipt: { select: { verificationCode: true } },
       request: { select: { replacementFor: { select: { voidedAt: true } } } },
       replacementRequests: { where: { status: { in: ["WAITING_CATALOG", "PENDING_APPROVAL", "WAITING_DELIVERY"] } }, select: { id: true } },
     } });
     if (!delivery) return invalid("Entrega indisponível no histórico.");
     if (delivery.voidedAt) return;
+    if (delivery.receipt?.verificationCode) return invalid("Esta entrega tem assinatura eletrônica e precisa permanecer no histórico.");
     if (delivery.returnedQuantity) return invalid("Esta entrega tem uma devolução registrada para descarte e precisa permanecer no histórico.");
     const note = field(data, "note", "Motivo da exclusão", 500);
     if (delivery.warehouseId) {
@@ -569,17 +577,34 @@ export async function voidDelivery(companyId: string, id: string, _: FormResult,
   return result;
 }
 
-export async function confirmReceipt(companyId: string, deliveryId: string, _: FormResult) {
+export async function confirmReceipt(companyId: string, deliveryId: string, _: FormResult, data: FormData) {
   return mutate(companyId, hasPersonalEquipment, async (tx, scope, actorId) => {
     const delivery = await tx.delivery.findUnique({
       where: { companyId_id: { companyId, id: deliveryId }, employeeId: ownEmployeeId(scope), voidedAt: null },
-      select: { receipt: { select: { deliveryId: true } }, quantity: true, returnedQuantity: true },
+      select: { id: true, deliveredAt: true, warehouseId: true, retirement: { select: { deliveryId: true } },
+        receipt: { select: { deliveryId: true } }, quantity: true, returnedQuantity: true,
+        employee: { select: { id: true, name: true, registration: true } },
+        equipment: { select: { id: true, name: true, certificate: true } },
+      },
     });
     if (!delivery) return invalid("Esta entrega não está no seu histórico pessoal.");
     if (delivery.receipt) return;
-    if (delivery.returnedQuantity === delivery.quantity) return invalid("Esta entrega já foi devolvida para descarte.");
+    if (!delivery.warehouseId || delivery.retirement || delivery.returnedQuantity >= delivery.quantity) {
+      return invalid("Esta entrega não aguarda confirmação de recebimento.");
+    }
     const confirmedAt = new Date();
-    await tx.deliveryReceipt.create({ data: { companyId, deliveryId, actorId, confirmedAt } });
+    const term = receiptTerm(companyId);
+    if (!term && data.has("receiptPreview")) return invalid("O termo está indisponível. Atualize a página.");
+    const preview = term && receiptPreview(companyId, term, delivery);
+    if (preview && (data.get("acceptReceipt") !== "on" || data.get("receiptPreview") !== receiptHash(JSON.stringify(preview)))) {
+      return invalid("Aceite o termo apresentado. Se os dados da entrega mudaram, atualize a página e confira os itens.");
+    }
+    const verificationCode = preview ? randomUUID() : null;
+    const signedContent = preview ? JSON.stringify({
+      ...preview, actorId, confirmedAt: confirmedAt.toISOString(), method: "Conta autenticada", verificationCode,
+    }) : null;
+    await tx.deliveryReceipt.create({ data: { companyId, deliveryId, actorId, confirmedAt, verificationCode, signedContent,
+      signatureHash: signedContent ? receiptHash(signedContent) : null } });
     await tx.equipmentEvent.create({ data: { companyId, subjectId: deliveryId, actorId, kind: "RECEIPT_CONFIRMED", occurredAt: confirmedAt } });
   });
 }

@@ -21,7 +21,6 @@ type TeamMember = {
   contractId: string | null;
   contract: { contractNumber: string | null } | null;
   jobTitle: string;
-  supervisor: { id: string; name: string } | null;
   scope: { role: Role; active: boolean } | null;
   active: boolean;
 };
@@ -79,19 +78,15 @@ export async function TeamOverview({ scope, people, search, status, filters }: {
   const contracts = sortedValues(people.flatMap(({ contractId, contract }) =>
     contractId && contract?.contractNumber ? [[contractId, contract.contractNumber]] : []));
   if (people.some(({ contract }) => !contract?.contractNumber)) contracts.push(["sem-contrato", "Sem contrato"]);
-  const supervisors = sortedValues(people.flatMap(({ supervisor }) => supervisor ? [[supervisor.id, supervisor.name]] : []));
-  if (people.some(({ supervisor }) => !supervisor)) supervisors.push(["sem-encarregado", "Sem Gerência"]);
   const selected = (key: string, options: [string, string][]) =>
     options.find(([id]) => id === filters[key])?.[0] ?? "";
   const unit = selected("unidade", units);
   const contract = selected("contrato", contracts);
-  const supervisor = selected("supervisor", supervisors);
   const pending = typeof filters.pendencia === "string" && Object.hasOwn(pendingOptions, filters.pendencia) ? filters.pendencia : "";
   const needle = search.toLocaleLowerCase("pt-BR");
   const scopedPeople = people.filter((person) =>
     (!status || person.active === (status === "ativo")) &&
     (!unit || person.unitId === unit) && (!contract || (person.contract?.contractNumber ? person.contractId : "sem-contrato") === contract) &&
-    (!supervisor || (person.supervisor?.id ?? "sem-encarregado") === supervisor) &&
     (!needle || [person.name, person.registration, employeeCompanyName(scope.company.name, person.contractorCompany)]
       .some((value) => value.toLocaleLowerCase("pt-BR").includes(needle))));
   const employeeId = { in: scopedPeople.map(({ id }) => id) };
@@ -196,22 +191,21 @@ export async function TeamOverview({ scope, people, search, status, filters }: {
         <FilterSelect label="Pendências" name="pendencia" selected={pending} options={Object.entries(pendingOptions)} placeholder="Todas" />
         <div className="operation-actions">
           <button className="button primary" type="submit">Filtrar</button>
-          {(search || unit || contract || supervisor || pending || status) && <Link className="button" href={base}>Limpar</Link>}
+          {(search || unit || contract || pending || status) && <Link className="button" href={base}>Limpar</Link>}
         </div>
       </div>
-      <details className="team-extra-filters" open={Boolean(unit || contract || supervisor || status)}>
+      <details className="team-extra-filters" open={Boolean(unit || contract || status)}>
         <summary>Mais filtros <Icon name="expand_more" /></summary>
         <div className="team-filter-row">
           <FilterSelect label="Unidade" name="unidade" selected={unit} options={units} placeholder="Todas" />
           <FilterSelect label="Contrato" name="contrato" selected={contract} options={contracts} placeholder="Todos" />
-          <FilterSelect label="Gerência" name="supervisor" selected={supervisor} options={supervisors} placeholder="Todos" />
           <FilterSelect label="Situação" name="status" selected={status} options={[["ativo", "Ativo"], ["inativo", "Inativo"]]} placeholder="Todas" />
         </div>
       </details>
     </form>
     {members.length ? <div className="team-list">{members.map(({ person, current, waiting, open, checklist, validity, configured, unitsInUse, missing }) => {
       const supervisorAccess = person.scope?.active && person.scope.role === "SUPERVISOR";
-      const canGrant = canGrantSupervisorAccess(scope) && (!person.scope || (person.scope.active && person.scope.role === "EMPLOYEE"));
+      const canGrant = Boolean(person.contractId) && canGrantSupervisorAccess(scope) && (!person.scope || (person.scope.active && person.scope.role === "EMPLOYEE"));
       const expectedEmpty = !person.active ? "O acompanhamento de itens esperados se aplica aos colaboradores ativos." :
         configured ? "Nenhum item esperado para esta função pelas regras cadastradas." : "Itens esperados ainda não configurados para esta unidade.";
       return <details className="panel team-member" key={person.id}>
@@ -229,7 +223,7 @@ export async function TeamOverview({ scope, people, search, status, filters }: {
           <Icon name="expand_more" />
         </summary>
         <div className="team-member-role">
-          <p>{person.unit.name} · {person.contract?.contractNumber ?? "Sem contrato"}{person.supervisor && ` · Gerência: ${person.supervisor.name}`}
+          <p>{person.unit.name} · {person.contract?.contractNumber ?? "Sem contrato"}
             {" · "}{employeeCompanyName(scope.company.name, person.contractorCompany)}{supervisorAccess && " · Perfil Gerência"}</p>
           {person.active && <details className="team-actions">
             <summary className="button" aria-label={`Ações de ${person.name}`} title="Ações"><span aria-hidden="true">⋯</span></summary>

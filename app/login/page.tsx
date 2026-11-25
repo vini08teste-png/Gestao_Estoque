@@ -7,7 +7,7 @@ import { loadViewer } from "@/lib/auth";
 
 export const metadata: Metadata = { title: "Entrar" };
 
-export default async function LoginPage({ searchParams }: { searchParams: Promise<{ senha?: string }> }) {
+export default async function LoginPage() {
   const viewer = await loadViewer();
   if (viewer?.scopes.length) redirect("/");
   return (
@@ -25,7 +25,6 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
       <section className="login-panel">
         <h2>Entrar</h2>
         <p>Use as credenciais da sua conta para acessar o portal.</p>
-        {(await searchParams).senha === "alterada" && <p className="feedback success" role="status">Senha alterada. Entre com a nova senha.</p>}
         <ActionForm action={login} label="Entrar">
           <label className="field">E-mail
             <input name="email" type="email" autoComplete="username" maxLength={254} required />

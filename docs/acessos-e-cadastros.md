@@ -6,7 +6,7 @@
 | --- | --- |
 | **Administrador** | Administrar a empresa, as unidades, os cadastros, os acessos, as regras e os prazos de alerta. Também pode operar o estoque e as entregas da empresa. |
 | **Gestor** | Consultar as equipes, cadastrar pessoas, conceder acesso de Gerência e operar o estoque, as solicitações e as entregas nas unidades autorizadas. |
-| **Gerência** | Acompanhar e cadastrar integrantes da equipe direta na própria unidade. Pode operar o estoque da unidade e atender pedidos e entregas no escopo da equipe. A decisão de aprovação aparece quando esse fluxo está ativado. |
+| **Gerência** | Acompanhar e cadastrar integrantes da equipe do contrato vinculado. Pode operar o estoque desse contrato e atender pedidos e entregas da equipe. A decisão de aprovação aparece quando esse fluxo está ativado. |
 | **Operador de estoque** | Consultar colaboradores no escopo, cadastrar itens e lotes, operar o estoque e atender solicitações e entregas nas unidades autorizadas. |
 | **Colaborador** | Consultar o próprio cadastro, solicitar itens, acompanhar os pedidos, confirmar recebimentos, pedir trocas e retirar itens de uso. |
 
@@ -19,7 +19,7 @@ O seletor de empresa aparece para quem está na empresa atual como administrador
 1. Na empresa onde a pessoa atua, abra **Colaboradores → Novo colaborador**. Para gestor, a tela se chama **Equipe**. Para Gerência, **Minha equipe**.
 2. Informe nome, matrícula, unidade e função. Em **Contrato**, escolha um contrato de estoque da unidade, quando houver. A matrícula é única dentro da empresa e é armazenada em maiúsculas.
 3. Em **Empresa**, informe o empregador quando houver terceirização, por exemplo, **LUK**. Se deixar em branco, o sistema mostra **TSA** ou **TSA Lynx** conforme a empresa do cadastro. A busca aceita o nome da empresa.
-4. No campo **Gerência**, selecione uma pessoa da mesma unidade, quando aplicável, e salve. Quando alguém da Gerência faz o cadastro, o sistema vincula o novo integrante à equipe dessa pessoa. O sistema impede vínculos que criariam um ciclo na equipe.
+4. Salve o cadastro. Quando alguém da Gerência cadastra um integrante, o sistema usa o contrato e a unidade dessa pessoa.
 
 O administrador edita registros existentes. Para corrigir a unidade de um cadastro já relacionado a outros registros, confira os vínculos antes de salvar. Alguns vínculos podem impedir a movimentação direta.
 
@@ -29,9 +29,9 @@ O administrador edita registros existentes. Para corrigir a unidade de um cadast
 2. Confira o **Colaborador vinculado**, defina o **Perfil de trabalho** e informe o e-mail usado no login.
 3. Para uma conta nova, defina uma senha temporária de 6 a 128 caracteres. Para vincular uma conta existente a outra empresa, use o mesmo e-mail e deixe o campo da senha vazio.
 4. Em perfis **Gestor** e **Operador de estoque**, escolha as unidades autorizadas ou marque **Todas as unidades**. Para **Gerência** e **Colaborador**, o vínculo pessoal é obrigatório e determina a unidade.
-5. Na primeira entrada com senha temporária, a pessoa cria a própria senha e depois entra de novo.
+5. Na primeira entrada com senha temporária, a pessoa cria a própria senha e segue conectada para a área de trabalho.
 
-Para cadastrar alguém da **LUK** com o perfil Gerência, informe LUK no cadastro, atribua o perfil **Gerência** no acesso e selecione essa pessoa em **Gerência** nos cadastros de sua equipe. Por exemplo, alguém da LUK pode liderar colaboradores da TSA Lynx na unidade onde todos atuam.
+Para cadastrar alguém da **LUK** com o perfil Gerência, informe LUK no cadastro, vincule a pessoa ao contrato da equipe e atribua o perfil **Gerência** no acesso. Por exemplo, alguém da LUK pode liderar colaboradores da TSA Lynx na unidade onde todos atuam.
 
 ### Conceder acesso de Gerência como gestor
 
@@ -39,11 +39,11 @@ Para cadastrar alguém da **LUK** com o perfil Gerência, informe LUK no cadastr
 2. Se a pessoa já tiver o perfil **Colaborador** ativo, confirme a alteração. Ela usará o mesmo e-mail e a mesma senha.
 3. Para criar um login, informe um e-mail ainda sem conta e uma senha temporária de 6 a 128 caracteres. Contas com outro perfil ou vínculos preexistentes pelo e-mail passam pela revisão de um administrador.
 
-O acesso segue a unidade do cadastro da pessoa. A equipe direta é definida pelo campo **Gerência** nos cadastros dos integrantes.
+O acesso de Gerência segue o contrato no cadastro. Duas pessoas do mesmo contrato, como alguém de Segurança do Trabalho e alguém de Planejamento, podem acompanhar a mesma equipe se ambas tiverem o perfil. Cadastros antigos sem contrato precisam ser vinculados antes de liberar a gestão.
 
 ## Troca e redefinição de senha
 
-- Quem está conectado usa **Trocar senha** no menu da conta e informa a senha atual.
+- Quem está conectado usa **Trocar senha** no menu da conta e informa a senha atual. Ao salvar, a sessão desse navegador é renovada e as demais sessões da conta são encerradas.
 - Se esquecer a senha, a pessoa pede a um administrador para abrir **Acessos e perfis → Editar acesso → Redefinir senha**.
 - O administrador precisa ter permissão em todas as empresas vinculadas à conta. A redefinição revoga as sessões e exige troca da senha temporária ao entrar.
 - A conta inicial criada pelo comando `db:seed` usa a senha definida na instalação. O administrador pode alterá-la pelo próprio menu.

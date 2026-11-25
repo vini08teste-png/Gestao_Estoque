@@ -2,10 +2,11 @@ import "server-only";
 import type { Prisma } from "@/generated/prisma/client";
 import type { AccessScope } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { employeesWhere, unitsWhere } from "@/lib/directory";
+import { contractStockWhere, employeesWhere, unitsWhere } from "@/lib/directory";
 import { deliveriesAwaitingReceipt, operationalDeliveryWhere, ownEmployeeId, personalDeliveryWhere, requestWhere } from "@/lib/equipment-access";
 import { brazilDay, formatDay, plusDays, requestLabels, todayInBrazil } from "@/lib/equipment";
 import { contractNumberLabel } from "@/lib/organization";
+import { receiptSignaturePath } from "@/lib/receipt-signature";
 
 export const alertLabels = {
   ca: "Validade do CA",
@@ -24,7 +25,7 @@ export type AlertKind = keyof typeof alertLabels;
 export type ReportKind = keyof typeof reportLabels;
 export type Query = Record<string, string | string[] | undefined>;
 type ReportPerson = { name: string; registration: string };
-type Cell = string | number | ReportPerson;
+type Cell = string | number | ReportPerson | { href: string; label: string };
 type Table = { columns: string[]; rows: Cell[][] };
 
 export type Deadline = {
@@ -119,12 +120,12 @@ export async function listDeadlines(scope: AccessScope, {
     need("ca") ? db.equipment.findMany({
       where: {
         companyId, category: "EPI", active: true, caExpiresAt: { lte: cutoff },
-        ...((unit || !scope.allUnits) && { lots: { some: { stocks: { some: { warehouse: { unit: location } } } } } }),
+        ...((unit || !scope.allUnits) && { lots: { some: { stocks: { some: { warehouse: { ...contractStockWhere(scope), unit: location } } } } } }),
       },
       select: { id: true, name: true, certificate: true, caExpiresAt: true },
     }) : [],
     need("lote") ? db.stock.findMany({
-      where: { companyId, quantity: { gt: 0 }, warehouse: { unit: location }, lot: { expiresAt: { lte: cutoff }, equipment: { active: true } } },
+      where: { companyId, quantity: { gt: 0 }, warehouse: { ...contractStockWhere(scope), unit: location }, lot: { expiresAt: { lte: cutoff }, equipment: { active: true } } },
       select: {
         warehouseId: true, lotId: true,
         warehouse: { select: { contractNumber: true, unit: { select: { name: true } } } },
@@ -152,11 +153,11 @@ function deliveredItems(scope: AccessScope, filters: Filters, kind: ReportKind |
       ...(kind === individualReport ? [{ employeeId, equipment: { category: "EPI" as const } }] : []),
     ] },
     select: {
-      deliveredAt: true, quantity: true, returnedQuantity: true, contractNumber: true,
+      id: true, deliveredAt: true, quantity: true, returnedQuantity: true, contractNumber: true,
       employee: { select: { name: true, registration: true, unit: { select: { name: true } } } },
       equipment: { select: { name: true, certificate: true } },
       stock: { select: { warehouse: { select: { contractNumber: true, unit: { select: { name: true } } } } } },
-      receipt: { select: { confirmedAt: true } },
+      receipt: { select: { confirmedAt: true, verificationCode: true } },
       returns: { select: { returnedAt: true }, orderBy: { returnedAt: "asc" } },
     },
     orderBy: [{ deliveredAt: "desc" }, { id: "desc" }],
@@ -171,11 +172,14 @@ function deliveryCells(row: Awaited<ReturnType<typeof deliveredItems>>[number]) 
 
 export async function individualReportRows(scope: AccessScope, filters: Filters, employeeId: string): Promise<Table> {
   const [quantity, measure, item, ca, contract, delivery, returned] = deliveryReportColumns;
-  const columns = [quantity, measure, item, ca, contract, delivery, "Rubrica de entrega", returned, "Rubrica de devolução"];
+  const columns = [quantity, measure, item, ca, contract, delivery, "Rubrica do empregado", returned, "Rubrica de devolução"];
   const rows = await deliveredItems(scope, filters, individualReport, employeeId);
   return { columns, rows: rows.map((row) => {
     const [quantity, measure, item, ca, contract, delivery, returned] = deliveryCells(row);
-    return [quantity, measure, item, ca, contract, delivery, "", returned, ""];
+    const signature = row.receipt?.verificationCode ? {
+      href: receiptSignaturePath(scope.companyId, row.id), label: `Assinatura eletrônica · ${row.receipt.verificationCode}`,
+    } : "";
+    return [quantity, measure, item, ca, contract, delivery, signature, returned, ""];
   }) };
 }
 
@@ -231,7 +235,7 @@ export async function reportRows(scope: AccessScope, kind: ReportKind, filters: 
 }
 
 function csvCell(value: Cell) {
-  const text = typeof value === "object" ? `${value.name} · ${value.registration}` : String(value);
+  const text = typeof value === "object" ? ("href" in value ? value.label : `${value.name} · ${value.registration}`) : String(value);
   const protectedText = typeof value !== "number" && (/^[\t\r\n]/.test(text) || /^[=+@-]/.test(text.trimStart())) ? "'" + text : text;
   return '"' + protectedText.replace(/"/g, '""') + '"';
 }

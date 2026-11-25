@@ -12,7 +12,7 @@ import { TeamOverview } from "@/components/team-overview";
 import { sections, Workspace, type Section } from "@/components/workspace";
 import { canAdminister, requireScope, type AccessScope } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { canAddEmployees, canGrantSupervisorAccess, employeesWhere, unitsWhere } from "@/lib/directory";
+import { canAddEmployees, canGrantSupervisorAccess, contractStockWhere, employeesWhere, unitsWhere } from "@/lib/directory";
 import { companyBrands, employeeCompanyName, isCompany, roles } from "@/lib/organization";
 import { passwordLength } from "@/lib/password";
 import type { Role } from "@/generated/prisma/enums";
@@ -107,13 +107,15 @@ async function Employees({ scope, edit, supervisorAccess, query, status, filters
     if (!canGrantSupervisorAccess(scope)) notFound();
     const person = await db.employee.findFirst({
       where: { ...employeesWhere(scope), id: supervisorAccess, active: true },
-      select: { id: true, name: true, unit: { select: { name: true } }, scope: { select: { active: true, role: true } } },
+      select: { id: true, name: true, contractId: true, unit: { select: { name: true } }, scope: { select: { active: true, role: true } } },
     });
     if (!person) notFound();
     return <>
       <Heading title="Acesso de Gerência" description={`${person.name} · ${person.unit.name}`} />
       <Editor title="Perfil de acesso" base={base}>
-        {person.scope?.active && person.scope.role === "SUPERVISOR" ? (
+        {!person.contractId ? (
+          <p className="empty">Vincule o colaborador a um contrato antes de conceder acesso de Gerência.</p>
+        ) : person.scope?.active && person.scope.role === "SUPERVISOR" ? (
           <p className="empty" role="status">Acesso de Gerência ativo.</p>
         ) : person.scope && (!person.scope.active || person.scope.role !== "EMPLOYEE") ? (
           <p className="empty">Peça a um administrador para revisar o perfil atual desta pessoa.</p>
@@ -134,14 +136,11 @@ async function Employees({ scope, edit, supervisorAccess, query, status, filters
   }
   if (edit) {
     if (!(edit === "novo" ? canCreate : admin)) notFound();
-    const [current, units, people, contracts] = await Promise.all([
+    const [current, units, contracts] = await Promise.all([
       edit === "novo" ? null : db.employee.findUnique({ where: { companyId_id: { companyId, id: edit } } }),
       db.unit.findMany({ where: unitsWhere(scope), orderBy: { name: "asc" } }),
-      scope.role === "SUPERVISOR" ? [] : db.employee.findMany({
-        where: { ...employeesWhere(scope), id: { not: edit } }, include: { unit: true }, orderBy: { name: "asc" },
-      }),
       db.warehouse.findMany({
-        where: { companyId, unit: unitsWhere(scope), OR: [
+        where: { companyId, ...contractStockWhere(scope), unit: unitsWhere(scope), OR: [
           { active: true, contractNumber: { not: null } },
           ...(edit === "novo" ? [] : [{ employees: { some: { id: edit } } }]),
         ] },
@@ -164,12 +163,8 @@ async function Employees({ scope, edit, supervisorAccess, query, status, filters
                     maxLength={120} placeholder={scope.company.name} aria-describedby="employee-company-help" />
                   <small id="employee-company-help">Deixe em branco para usar {scope.company.name}. Para terceirizados, informe a empresa empregadora, como LUK.</small>
                 </div>
-                <EmployeeContractFields units={units} contracts={contracts} initialUnit={current?.unitId ?? ""} initialContract={current?.contractId ?? ""} />
-                {scope.role !== "SUPERVISOR" && <label className="field">Gerência<select name="supervisor" defaultValue={current?.supervisorId ?? ""}>
-                  <option value="">Sem Gerência</option>
-                  {people.map((person) => <option key={person.id} value={person.id}>
-                    {person.name} · {employeeCompanyName(scope.company.name, person.contractorCompany)} · {person.unit.name}</option>)}
-                </select><small>Escolha uma pessoa da Gerência na mesma unidade. A pessoa pode ser de uma empresa terceirizada.</small></label>}
+                <EmployeeContractFields units={units} contracts={contracts} initialUnit={current?.unitId ?? (scope.role === "SUPERVISOR" ? scope.employee?.unitId : undefined) ?? ""}
+                  initialContract={current?.contractId ?? (scope.role === "SUPERVISOR" ? scope.employee?.contractId : undefined) ?? ""} fixedContract={scope.role === "SUPERVISOR"} />
                 <TextField name="jobTitle" label="Função" value={current?.jobTitle} />
               </div>
               <ActiveField active={current?.active} />
@@ -191,7 +186,7 @@ async function Employees({ scope, edit, supervisorAccess, query, status, filters
       ] } : {}),
     },
     include: { unit: { select: { name: true } }, contract: { select: { contractNumber: true } },
-      supervisor: { select: { id: true, name: true } }, scope: { select: { userId: true, role: true, active: true } } },
+      scope: { select: { userId: true, role: true, active: true } } },
     orderBy: { name: "asc" },
   });
   return (
@@ -207,10 +202,11 @@ async function Employees({ scope, edit, supervisorAccess, query, status, filters
           <button className="button" type="submit">Filtrar</button>
         </form>
       )}
+      {scope.role === "SUPERVISOR" && !scope.employee?.contractId && <p className="feedback">Peça a um administrador para vincular seu cadastro a um contrato.</p>}
       {team ? <TeamOverview scope={scope} people={people} search={query} status={status} filters={filters} /> :
-      <Table label={title} columns={["Matrícula", "Nome", "Empresa", "Unidade", "Contrato", "Função", "Gerência", "Situação", ...(admin ? ["Ação"] : [])]}
+      <Table label={title} columns={["Matrícula", "Nome", "Empresa", "Unidade", "Contrato", "Função", "Situação", ...(admin ? ["Ação"] : [])]}
         rows={people.map((person) => [person.id, person.registration, person.name, employeeCompanyName(scope.company.name, person.contractorCompany), person.unit.name, person.contract?.contractNumber ?? "—",
-          person.jobTitle, person.supervisor?.name ?? "—", <Status active={person.active} />,
+          person.jobTitle, <Status active={person.active} />,
           ...(admin ? [<RowActions id={`employee-actions-${person.id}`} label={`Ações de ${person.name}`}>
               <EditLink base={base} id={person.id} label={person.name} />
               <Link className="text-action" aria-label={`Configurar acesso de ${person.name}`}
@@ -298,7 +294,7 @@ async function Users({ scope, edit, viewerId, profile, employeeId }: {
           <p>Em <strong>Colaboradores</strong>, use <strong>Configurar acesso</strong> na linha da pessoa. Informe o e-mail de login e escolha o perfil.</p>
           <dl>{(["WAREHOUSE", "SUPERVISOR", "MANAGER"] as const).map((role) => <div key={role}>
             <dt>{roles[role]}</dt><dd>{role === "WAREHOUSE" ? "Marque as unidades na edição do acesso."
-              : role === "SUPERVISOR" ? "Selecione a pessoa no campo Gerência no cadastro de cada membro da equipe." : "Marque as unidades que o gestor acompanha."}</dd>
+              : role === "SUPERVISOR" ? "O perfil acompanha a equipe do contrato vinculado ao colaborador." : "Marque as unidades que o gestor acompanha."}</dd>
           </div>)}</dl>
         </div>
       </details>

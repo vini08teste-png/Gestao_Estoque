@@ -37,22 +37,22 @@ export async function seedScenario(db: PrismaClient) {
     db.unit.create({ data: { companyId, name: name("Unidade restrita") } }),
   ]);
 
-  const employee = (label: string, unitId: string, supervisorId?: string) => db.employee.create({
+  const [warehouse, outsideWarehouse] = await Promise.all([
+    db.warehouse.create({ data: { companyId, unitId: unit.id, name: name("Contrato teste"), contractNumber: name("CTR") } }),
+    db.warehouse.create({ data: { companyId, unitId: outsideUnit.id, name: name("Contrato restrito"), contractNumber: name("FORA") } }),
+  ]);
+  const employee = (label: string, unitId: string, contractId: string) => db.employee.create({
     data: { companyId, unitId, name: name(label), registration: `${tag}-${label}`, department: "Operação",
-      jobTitle: label, supervisorId },
+      jobTitle: label, contractId },
   });
-  const supervisorEmployee = await employee("Gerência", unit.id);
-  const worker = await employee("Colaborador", unit.id, supervisorEmployee.id);
-  const outside = await employee("Pessoa restrita", outsideUnit.id);
+  const supervisorEmployee = await employee("Gerência", unit.id, warehouse.id);
+  const worker = await employee("Colaborador", unit.id, warehouse.id);
+  const outside = await employee("Pessoa restrita", outsideUnit.id, outsideWarehouse.id);
   const [manager, supervisor, employeeAccount, operator] = await Promise.all([
     user("MANAGER", null, unit.id),
     user("SUPERVISOR", supervisorEmployee.id, null),
     user("EMPLOYEE", worker.id, null),
     user("WAREHOUSE", null, unit.id),
-  ]);
-  const [warehouse, outsideWarehouse] = await Promise.all([
-    db.warehouse.create({ data: { companyId, unitId: unit.id, name: name("Almoxarifado teste") } }),
-    db.warehouse.create({ data: { companyId, unitId: outsideUnit.id, name: name("Almoxarifado restrito") } }),
   ]);
   const addStock = async (label: string, warehouseId: string, quantity: number) => {
     const item = await db.equipment.create({

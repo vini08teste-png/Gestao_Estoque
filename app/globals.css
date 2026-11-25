@@ -315,6 +315,22 @@ button:disabled { cursor: wait; opacity: .68; }
 .team-actions a:hover, .row-actions-popover a:hover { background: var(--tint); }
 .row-actions-popover { position: fixed; inset: 0; margin: auto; padding: 5px; width: min(225px, calc(100vw - 24px)); }
 .row-actions-popover:popover-open { display: grid; }
+.receipt-status { display: grid; justify-items: start; gap: 5px; }
+.receipt-dialog { inset: 0; margin: auto; width: min(760px, calc(100% - 24px)); max-height: calc(100dvh - 24px); padding: 0; color: inherit; overflow: hidden; }
+.receipt-dialog::backdrop { background: #15172299; }
+.receipt-dialog form { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; max-height: calc(100dvh - 26px); }
+.receipt-dialog-heading, .receipt-dialog-footer, .receipt-dialog-content, .receipt-document-panel { padding: clamp(12px, 3vw, 20px); }
+.receipt-dialog-heading { display: flex; align-items: center; gap: 12px; border-bottom: 1px solid var(--line); }
+.receipt-dialog-heading .brand-logo { width: 76px; flex: none; }
+.receipt-dialog-content { overflow: auto; overscroll-behavior: contain; }
+.receipt-dialog-content h3 { margin-top: 14px; }
+.receipt-dialog-footer { display: grid; gap: 10px; border-top: 1px solid var(--line); }
+.receipt-dialog-footer .check { align-items: start; }
+.receipt-dialog-footer .operation-actions { justify-content: flex-end; }
+.receipt-term-text { white-space: pre-wrap; margin-block: 12px; }
+.receipt-document { max-width: 780px; }
+.receipt-document-panel { display: grid; gap: 12px; }
+.receipt-code, .receipt-document code, .receipt-document dd { overflow-wrap: anywhere; }
 @supports (position-area: bottom span-left) {
   .row-actions-popover { inset: auto; margin: 4px 0; position-area: bottom span-left; position-try-fallbacks: flip-block, flip-inline, flip-block flip-inline; }
 }

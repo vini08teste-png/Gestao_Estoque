@@ -2,7 +2,7 @@ import "server-only";
 import type { Prisma } from "@/generated/prisma/client";
 import type { AccessScope } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { unitsWhere } from "@/lib/directory";
+import { contractStockWhere, unitsWhere } from "@/lib/directory";
 import { requestWhere } from "@/lib/equipment-access";
 import { todayInBrazil } from "@/lib/equipment";
 
@@ -26,7 +26,7 @@ export async function stockBalances(scope: AccessScope, unitIds: string[] = [], 
   const rows = await db.stock.findMany({
     where: {
       companyId: scope.companyId,
-      warehouse: { active: true, unit: { ...unitAccess, active: true, ...(unitIds.length && { AND: [{ id: { in: unitIds } }] }) } },
+      warehouse: { ...(!personal && contractStockWhere(scope)), active: true, unit: { ...unitAccess, active: true, ...(unitIds.length && { AND: [{ id: { in: unitIds } }] }) } },
       lot: { equipment: { active: true }, ...(equipmentIds.length && { equipmentId: { in: equipmentIds } }) },
     },
     select: {
@@ -68,7 +68,7 @@ export async function stockAlerts(scope: AccessScope, unitId = "") {
   for (const row of settings) {
     const key = stockKey(row.unitId, row.equipmentId);
     thresholds.set(key, row.quantity);
-    if (!balances.has(key)) balances.set(key, { unit: row.unit.name, equipment: row.equipment.name, quantity: 0, largestWarehouse: 0 });
+    if (scope.role !== "SUPERVISOR" && !balances.has(key)) balances.set(key, { unit: row.unit.name, equipment: row.equipment.name, quantity: 0, largestWarehouse: 0 });
   }
   return [...balances.entries()].map(([key, row]) => [key, { ...row, minimum: thresholds.get(key) ?? defaultStockMinimum }] as const)
     .filter(([, row]) => row.quantity <= row.minimum)

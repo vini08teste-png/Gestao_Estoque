@@ -1,7 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { allowLogin, createSession, endSession, loadViewer } from "@/lib/auth";
+import { allowLogin, createSession, endSession, loadViewer, updatePasswordAndSession } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { emailAddress, validEmail, type FormResult } from "@/lib/forms";
 import { hashPassword, passwordLength, passwordLengthText, validPassword, verifyPassword } from "@/lib/password";
@@ -42,13 +42,8 @@ export async function changePassword(_: FormResult, data: FormData): Promise<For
     return { error: "Não foi possível confirmar a senha atual. Confira o valor ou tente mais tarde." };
   }
   const passwordHash = await hashPassword(password);
-  const updated = await db.$transaction(async (tx) => {
-    const result = await tx.user.updateMany({ where: { id: viewer.id, passwordHash: user.passwordHash }, data: { passwordHash, mustChangePassword: false } });
-    if (!result.count) return false;
-    await tx.session.deleteMany({ where: { userId: viewer.id } });
-    return true;
-  });
-  if (!updated) return { error: "A senha foi alterada em outra sessão. Entre novamente." };
-  await endSession();
-  redirect("/login?senha=alterada");
+  if (!await updatePasswordAndSession(viewer.id, user.passwordHash, passwordHash)) {
+    return { error: "A senha foi alterada em outra sessão. Entre novamente." };
+  }
+  redirect("/");
 }

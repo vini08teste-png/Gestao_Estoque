@@ -7,6 +7,8 @@ import {
   removeExpectedItem, resetStockMinimum, saveEquipment, saveExpectedItem, saveRule, saveStockMinimum, saveWarehouse, voidDelivery,
 } from "@/app/equipment-actions";
 import { ActionForm } from "@/components/action-form";
+import { Brand } from "@/components/brand";
+import { ReceiptDialog } from "@/components/receipt-dialog";
 import { DeliveryFields } from "@/components/delivery-fields";
 import { DeliveryProofField } from "@/components/delivery-proof-field";
 import { EquipmentPicker } from "@/components/equipment-picker";
@@ -17,10 +19,11 @@ import { ReplacementPhotoField } from "@/components/replacement-photo-field";
 import { Icon } from "@/components/icon";
 import { canAdminister, type AccessScope } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { employeesWhere, unitsWhere } from "@/lib/directory";
+import { contractStockWhere, employeesWhere, unitsWhere } from "@/lib/directory";
 import { canSetStockMinimum, deliveriesAwaitingReceipt, deliveryCorrectionFields, handlesStock, hasPersonalEquipment, operationalDeliveryWhere, ownEmployeeId, personalDeliveryWhere, requestWhere } from "@/lib/equipment-access";
 import { brazilDay, formatDay, inputDay, itemsInUse, latestByItem, requestLabels, retirementLabels, todayInBrazil } from "@/lib/equipment";
-import { contractNumberLabel, inventoryTitle, itemCatalogTitle, operationRequestTab, stockContractLabel } from "@/lib/organization";
+import { contractNumberLabel, inventoryTitle, isCompany, itemCatalogTitle, operationRequestTab, stockContractLabel } from "@/lib/organization";
+import { receiptConsent, receiptHash, receiptPreview, receiptSignaturePath, receiptTerm, receiptTitle } from "@/lib/receipt-signature";
 import { openRequestStatuses, reportFilters, type Query } from "@/lib/reporting";
 import { availableLotWhere, defaultStockMinimum, requestAvailability, stockBalances, stockKey } from "@/lib/stock-availability";
 import type { Prisma } from "@/generated/prisma/client";
@@ -149,16 +152,17 @@ export async function Inventory({ scope, operation, warehouseId = "", registered
   if (!handlesStock(scope)) notFound();
   if (operation === "minimos") return <StockMinimums scope={scope} />;
   const editingContract = operation === "contrato" || operation === "almoxarifado";
+  if (editingContract && !warehouseId && scope.role === "SUPERVISOR") notFound();
   if (operation && operation !== "entrada" && !editingContract) notFound();
   const root = `/${companyId}/estoque`;
   const [stocks, warehouses, items, units] = await Promise.all([
     !operation ? db.stock.findMany({
-      where: { companyId, warehouse: { active: true, unit: { ...unitsWhere(scope), active: true } } },
+      where: { companyId, warehouse: { ...contractStockWhere(scope), active: true, unit: { ...unitsWhere(scope), active: true } } },
       include: { warehouse: { include: { unit: true } }, lot: { include: { equipment: true } } },
       orderBy: [{ warehouse: { name: "asc" } }, { lot: { equipment: { name: "asc" } } }],
     }) : [],
     !editingContract || warehouseId ? db.warehouse.findMany({
-      where: { companyId, active: true, unit: { ...unitsWhere(scope), active: true } }, include: { unit: true }, orderBy: { name: "asc" },
+      where: { companyId, ...contractStockWhere(scope), active: true, unit: { ...unitsWhere(scope), active: true } }, include: { unit: true }, orderBy: { name: "asc" },
     }) : [],
     operation === "entrada" ? db.equipment.findMany({ where: { companyId, active: true }, select: { id: true, name: true }, orderBy: { name: "asc" } }) : [],
     editingContract && !warehouseId ? db.unit.findMany({ where: { ...unitsWhere(scope), active: true }, orderBy: { name: "asc" } }) : [],
@@ -180,7 +184,7 @@ export async function Inventory({ scope, operation, warehouseId = "", registered
       action={operation ? <Link className="button" href={root}>Voltar ao estoque</Link> : <div className="operation-actions">
         {admin && <Link className="button" href={`/${companyId}/usuarios?perfil=WAREHOUSE`}>Gerenciar responsáveis</Link>}
         {canSetStockMinimum(scope) && <Link className="button" href={`${root}?acao=minimos`}>Estoque mínimo</Link>}
-        <Link className="button" href={`${root}?acao=contrato`}>Novo contrato</Link>
+        {scope.role !== "SUPERVISOR" && <Link className="button" href={`${root}?acao=contrato`}>Novo contrato</Link>}
         <Link className="button primary" href={`${root}?acao=entrada`}>Registrar entrada</Link>
       </div>} />
     {!operation && registered && <p className="feedback success operation-feedback" role="status">Entrada registrada.</p>}
@@ -199,8 +203,8 @@ export async function Inventory({ scope, operation, warehouseId = "", registered
           {quantityField}
           <label className="field">Validade do produto (opcional)<input type="date" name="expiresAt" /></label>
         </div>
-      </ActionForm> : <p className="empty">Para registrar uma entrada, <Link href={`${root}?acao=contrato`}
-        className="text-action">cadastre um contrato</Link>.</p>}
+      </ActionForm> : <p className="empty">{scope.role === "SUPERVISOR" ? "Nenhum estoque ativo está disponível para o seu contrato." :
+        <>Para registrar uma entrada, <Link href={`${root}?acao=contrato`} className="text-action">cadastre um contrato</Link>.</>}</p>}
     </Editor> : <>
       <h2 className="section-title">Contratos</h2>
       <Records cardsOnMobile columns={[contractNumberLabel, "Unidade", "Situação", "Ação"]}
@@ -461,12 +465,12 @@ async function DeliveryCorrection({ scope, id, remove }: { scope: AccessScope; i
     where: { companyId_id: { companyId, id }, voidedAt: null },
     include: {
       employee: { select: { id: true, name: true } }, equipment: { select: { id: true, name: true } },
-      proof: { select: { deliveryId: true } }, receipt: { select: { confirmedAt: true } },
+      proof: { select: { deliveryId: true } }, receipt: { select: { confirmedAt: true, verificationCode: true } },
       retirement: { select: { retiredAt: true } }, request: { select: { openedAt: true } },
       _count: { select: { replacementRequests: true } },
     },
   });
-  if (!row) notFound();
+  if (!row || row.receipt?.verificationCode) notFound();
   const fields = deliveryCorrectionFields(row);
   const [people, items] = !remove && fields.assignment ? await Promise.all([
     db.employee.findMany({
@@ -546,12 +550,12 @@ export async function Deliveries({ scope, create, requestId, registered, paper =
         select: { id: true, name: true, unitId: true, unit: { select: { name: true } } }, orderBy: { name: "asc" },
       }),
       paper ? [] : db.warehouse.findMany({
-        where: { companyId, active: true, unit: { ...unitsWhere(scope), active: true, ...(request && { id: request.unitId }) } },
+        where: { companyId, ...contractStockWhere(scope), active: true, unit: { ...unitsWhere(scope), active: true, ...(request && { id: request.unitId }) } },
         orderBy: { name: "asc" }, select: { id: true, name: true, contractNumber: true, unitId: true },
       }),
       paper ? [] : db.stock.findMany({
         where: { companyId, quantity: { gt: 0 },
-          warehouse: { active: true, unit: { ...unitsWhere(scope), active: true, ...(request && { id: request.unitId }) } },
+          warehouse: { ...contractStockWhere(scope), active: true, unit: { ...unitsWhere(scope), active: true, ...(request && { id: request.unitId }) } },
           lot: { ...availableLotWhere(today), ...(request?.equipmentId && { equipmentId: request.equipmentId }) } },
         select: { warehouseId: true, quantity: true, lot: { select: { equipment: { select: { id: true, name: true } } } } },
         orderBy: { lot: { equipment: { name: "asc" } } },
@@ -597,11 +601,11 @@ export async function Deliveries({ scope, create, requestId, registered, paper =
   const rows = await db.delivery.findMany({
     where: { AND: [own ? personalDeliveryWhere(scope) : operationalDeliveryWhere(scope), ...filters.where] },
     include: {
-      employee: { select: { name: true } }, equipment: { select: { name: true } },
+      employee: { select: { id: true, name: true, registration: true } }, equipment: { select: { id: true, name: true, certificate: true } },
       stock: { select: { warehouse: { select: { name: true, contractNumber: true } }, lot: { select: { expiresAt: true } } } },
       actor: { select: { scopes: { where: { companyId }, select: { name: true } } } },
       proof: { select: { deliveryId: true } },
-      receipt: { select: { confirmedAt: true } },
+      receipt: { select: { confirmedAt: true, verificationCode: true } },
       retirement: { select: { reason: true, note: true, retiredAt: true } },
       returns: { select: { requestId: true, returnedAt: true, quantity: true }, orderBy: { returnedAt: "asc" } },
       replacementRequests: { where: { status: { in: ["WAITING_CATALOG", "PENDING_APPROVAL", "WAITING_DELIVERY"] } },
@@ -632,11 +636,23 @@ export async function Deliveries({ scope, create, requestId, registered, paper =
         <ReplacementPhotoField />
       </ActionForm>
     </details>;
-  const receiptCell = (row: (typeof rows)[number], canConfirm: boolean) => row.receipt ?
-    <span className="badge active">Confirmado em {dateTimeInBrazil.format(row.receipt.confirmedAt)}</span> :
-    row.returnedQuantity === row.quantity ? "Devolvido para descarte" :
-    !row.warehouseId ? <span className="badge">Entrega anterior</span> :
-    canConfirm ? <ActionForm action={confirmReceipt.bind(null, companyId, row.id)} label="Confirmo que recebi" /> : "Aguardando confirmação";
+  const term = own ? receiptTerm(companyId) : null;
+  const receiptCell = (row: (typeof rows)[number], canConfirm: boolean) => {
+    if (row.receipt) return <div className="receipt-status">
+      <span className="badge active">Confirmado em {dateTimeInBrazil.format(row.receipt.confirmedAt)}</span>
+      {row.receipt.verificationCode && <Link className="text-action" href={receiptSignaturePath(companyId, row.id)}>Ver comprovante de aceite</Link>}
+    </div>;
+    if (row.returnedQuantity === row.quantity) return "Devolvido para descarte";
+    if (!row.warehouseId) return <span className="badge">Entrega anterior</span>;
+    if (row.retirement || !canConfirm) return "Aguardando confirmação";
+    const action = confirmReceipt.bind(null, companyId, row.id);
+    if (!term) return <ActionForm action={action} label="Confirmo que recebi" />;
+    const preview = receiptPreview(companyId, term, row);
+    return <ReceiptDialog action={action} fingerprint={receiptHash(JSON.stringify(preview))}
+      title={receiptTitle} content={term.content} consent={receiptConsent} employee={row.employee}
+      item={{ ...preview.items[0], date: formatDay(row.deliveredAt) }}
+      logo={isCompany(companyId) && <Brand company={companyId} variant="color" />} />;
+  };
   const itemCard = (row: (typeof rows)[number], allowActions: boolean) =>
     <article className={`panel personal-equipment-card${pendingIds.has(row.id) ? " awaiting-receipt" : ""}`} key={row.id} id={`entrega-${row.id}`}>
       <h3>{row.equipment.name}</h3>
@@ -729,7 +745,7 @@ export async function Deliveries({ scope, create, requestId, registered, paper =
           </details>}
         </div> : "—",
         row.proof ? <a className="text-action" href={`/comprovantes/${companyId}/${row.id}`}>Baixar</a> : "—",
-        ...(admin ? [<RowActions id={`delivery-actions-${row.id}`}
+        ...(admin ? [row.receipt?.verificationCode ? "Assinado" : <RowActions id={`delivery-actions-${row.id}`}
           label={`Ações de ${row.equipment.name} para ${row.employee.name} em ${formatDay(row.deliveredAt)}`}>
           <Link className="text-action" href={`${root}?edit=${encodeURIComponent(row.id)}`}>Editar</Link>
           {row.returnedQuantity === 0 && <Link className="text-action danger" href={`${root}?apagar=${encodeURIComponent(row.id)}`}>Apagar</Link>}

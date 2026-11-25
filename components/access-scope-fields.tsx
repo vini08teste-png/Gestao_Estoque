@@ -29,7 +29,7 @@ export function AccessScopeFields({ employees, companyName, units, defaults }: {
           {employees.map((person) => <option key={person.id} value={person.id}>
             {person.name} · {employeeCompanyName(companyName, person.contractorCompany)} · {person.unit.name}</option>)}
         </select>
-        <small>{role === "SUPERVISOR" ? "O cadastro determina a unidade. Monte a equipe selecionando esta pessoa no campo Gerência do cadastro de cada integrante."
+        <small>{role === "SUPERVISOR" ? "A pessoa acompanha a equipe do contrato vinculado ao seu cadastro."
           : role === "EMPLOYEE" ? "Usa a unidade do cadastro para abrir pedidos pessoais."
           : "Vincule o cadastro da pessoa para liberar Meus itens e os pedidos pessoais."}</small>
       </label>

@@ -376,6 +376,9 @@ model DeliveryReceipt {
   deliveryId  String
   actorId     String
   confirmedAt DateTime @default(now())
+  verificationCode String? @unique
+  signedContent String?
+  signatureHash String?
   delivery    Delivery @relation(fields: [companyId, deliveryId], references: [companyId, id], onDelete: Restrict)
   actor       User @relation(fields: [actorId], references: [id], onDelete: Restrict)
 

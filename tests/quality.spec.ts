@@ -67,6 +67,8 @@ test("contrato sem saldo aparece e a entrega anterior preserva o saldo", async (
   expect(balance.quantity).toBe(2);
 
   await page.goto("/tsa/estoque");
+  await db.warehouse.update({ where: { companyId_id: { companyId, id: scenario.warehouse.id } }, data: { contractNumber: null } });
+  await page.reload();
   const priorContract = page.getByRole("row").filter({ hasText: scenario.warehouse.name }).filter({ hasText: "Informar número" });
   await priorContract.getByRole("link", { name: "Informar número" }).click();
   await page.getByLabel("Número do contrato").fill("CTR-OPER-001");
@@ -113,7 +115,7 @@ test("uma entrega por item usa o saldo combinado do contrato", async ({ page }) 
 test("gestor concede acesso de Gerência dentro das unidades autorizadas", async ({ page }) => {
   const companyId = "tsa";
   const person = await db.employee.create({ data: {
-    companyId, unitId: scenario.unit.id, registration: `LUK-${scenario.tag}`,
+    companyId, unitId: scenario.unit.id, contractId: scenario.warehouse.id, registration: `LUK-${scenario.tag}`,
     name: `Técnica de segurança ${scenario.tag}`, contractorCompany: "LUK", department: "Segurança", jobTitle: "Técnica de segurança",
   } });
   const accessUrl = (id: string) => `/tsa/colaboradores?encarregado=${id}`;
@@ -150,7 +152,7 @@ test("gestor concede acesso de Gerência dentro das unidades autorizadas", async
     data: { email: `promover-${scenario.tag}@example.test`, passwordHash: scenario.employeeAccount.passwordHash },
   });
   const existing = await db.employee.create({ data: {
-    companyId, unitId: scenario.unit.id, registration: `PROM-${scenario.tag}`,
+    companyId, unitId: scenario.unit.id, contractId: scenario.warehouse.id, registration: `PROM-${scenario.tag}`,
     name: `Colaborador a promover ${scenario.tag}`, department: "Operação", jobTitle: "Técnico",
     scope: { create: { userId: account.id, name: "Acesso de teste", role: "EMPLOYEE", allUnits: false } },
   } });
@@ -163,6 +165,23 @@ test("gestor concede acesso de Gerência dentro das unidades autorizadas", async
   });
   expect(promoted).toMatchObject({ employeeId: existing.id, role: "SUPERVISOR", allUnits: false,
     user: { id: account.id, passwordHash: account.passwordHash, mustChangePassword: false } });
+
+  const differentContract = await db.warehouse.create({ data: {
+    companyId, unitId: scenario.unit.id, name: `Contrato separado ${scenario.tag}`, contractNumber: "CTR-SEPARADO",
+  } });
+  const differentPerson = await db.employee.create({ data: {
+    companyId, unitId: scenario.unit.id, contractId: differentContract.id,
+    name: `Pessoa de outro contrato ${scenario.tag}`, registration: `SEPARADO-${scenario.tag}`, jobTitle: "Planejamento",
+  } });
+  for (const responsible of [scenario.supervisor, { email: account.email, password: scenario.employeeAccount.password }]) {
+    await signOut(page);
+    await signIn(page, responsible);
+    await page.goto("/tsa/colaboradores");
+    await expect(page.locator(".team-member").filter({ hasText: scenario.worker.name })).toBeVisible();
+    await expect(page.locator(".team-member").filter({ hasText: differentPerson.name })).toHaveCount(0);
+    await page.goto("/tsa/estoque");
+    await expect(page.getByText("CTR-SEPARADO", { exact: true })).toHaveCount(0);
+  }
 });
 
 test("restringe histórico, exportação, comprovantes e pedidos à empresa e à unidade", async ({ page }) => {
@@ -210,14 +229,14 @@ test("o servidor revalida a equipe quando uma aprovação já aberta é enviada"
   const row = page.getByRole("article").filter({ hasText: request.reason });
   await row.getByText("Ver detalhes").click();
   try {
-    await db.employee.update({ where, data: { supervisorId: null } });
+    await db.employee.update({ where, data: { contractId: null } });
     await row.getByRole("button", { name: "Aprovar", exact: true }).click();
     await expect(row.locator(".feedback.error")).toContainText("não está disponível");
     expect((await db.equipmentRequest.findUnique({
       where: { companyId_id: { companyId: "tsa", id: request.id } },
     }))?.status).toBe("PENDING_APPROVAL");
   } finally {
-    await db.employee.update({ where, data: { supervisorId: scenario.worker.supervisorId } });
+    await db.employee.update({ where, data: { contractId: scenario.warehouse.id } });
   }
 });
 
@@ -278,7 +297,26 @@ test("perfil Gerência rejeita um pedido com justificativa e aprova outro para e
   const inUse = page.getByRole("region", { name: "Itens em uso" });
   await expect(awaitingReceipt).toContainText(scenario.uniform.item.name);
   await expect(inUse).not.toContainText(scenario.uniform.item.name);
-  await awaitingReceipt.getByRole("button", { name: "Confirmo que recebi" }).click();
+  if (process.env.EPI_RECEIPT_DEMO === "true") {
+    await awaitingReceipt.getByRole("button", { name: "Confirmar recebimento" }).click();
+    const dialog = page.getByRole("dialog", { name: "Ficha de EPI e Termo de Compromisso" });
+    const sign = dialog.getByRole("button", { name: "Assinar e confirmar recebimento" });
+    await expect(sign).toBeDisabled();
+    await expect(dialog.locator('input[type="password"]')).toHaveCount(0);
+    await dialog.getByRole("button", { name: "Cancelar" }).click();
+    await expect(dialog).toBeHidden();
+    await awaitingReceipt.getByRole("button", { name: "Confirmar recebimento" }).click();
+    await dialog.getByRole("checkbox").check();
+    await sign.click();
+    await expect(dialog).toBeHidden();
+    await page.getByRole("link", { name: "Ver comprovante de aceite" }).first().click();
+    await expect(page.getByRole("heading", { name: "Comprovante de aceite" })).toBeVisible();
+    await expect(page.getByText("Termo de demonstração", { exact: true })).toBeVisible();
+    await expect(page.getByText("Conta autenticada", { exact: true })).toBeVisible();
+    await page.getByRole("link", { name: "Voltar", exact: true }).click();
+  } else {
+    await awaitingReceipt.getByRole("button", { name: "Confirmo que recebi" }).click();
+  }
   await expect(inUse).toContainText(scenario.uniform.item.name);
   await expect(inUse).toContainText("Confirmado em");
   await expect(awaitingReceipt).toHaveCount(0);
@@ -464,10 +502,10 @@ test("troca aceita só foto e restringe a visualização ao solicitante e à equ
   expect((await page.request.get(url.replace("/tsa/", "/lynx/"))).status()).toBe(404);
   const where = { companyId_id: { companyId, id: scenario.worker.id } };
   try {
-    await db.employee.update({ where, data: { supervisorId: null } });
+    await db.employee.update({ where, data: { contractId: null } });
     expect((await page.request.get(url)).status()).toBe(404);
   } finally {
-    await db.employee.update({ where, data: { supervisorId: scenario.worker.supervisorId } });
+    await db.employee.update({ where, data: { contractId: scenario.warehouse.id } });
   }
 });
 
@@ -609,25 +647,26 @@ test("colaborador terceirizado pode liderar a equipe da unidade onde atua", asyn
   const scope = await db.userScope.findFirstOrThrow({ where: { companyId, user: { email } } });
   expect(scope).toMatchObject({ role: "SUPERVISOR", employeeId: worker.id });
 
-  await page.goto(`/tsa/colaboradores?edit=${scenario.worker.id}`);
-  const supervisorField = page.locator('select[name="supervisor"]');
-  await expect(supervisorField.locator(`option[value="${worker.id}"]`)).toContainText("LUK");
-  await supervisorField.selectOption(worker.id);
-  await page.getByRole("button", { name: "Salvar e continuar" }).click();
-  await expect(page.getByRole("status")).toHaveText("Alterações salvas.");
-
   await signOut(page);
   await page.getByLabel("E-mail").fill(email);
   await page.getByLabel("Senha", { exact: true }).fill(temporaryPassword);
   await page.getByRole("button", { name: "Entrar", exact: true }).click();
   await expect(page).toHaveURL(/\/conta\/senha$/);
   const newPassword = "Nov-62";
+  const firstSession = await page.context().storageState();
   await page.locator('input[name="currentPassword"]').fill(temporaryPassword);
   await page.locator('input[name="password"]').fill(newPassword);
   await page.locator('input[name="confirmation"]').fill(newPassword);
   await page.getByRole("button", { name: "Salvar nova senha" }).click();
-  await expect(page).toHaveURL(/\/login\?senha=alterada$/);
-  await signIn(page, { email, password: newPassword });
+  await expect(page).toHaveURL(/\/tsa$/);
+  await expect(page.getByRole("heading", { name: "Visão geral" })).toBeVisible();
+  const currentSession = await page.context().storageState();
+  const sessionCookie = (state: typeof currentSession) => state.cookies.find(({ name }) => name === "epi-session")?.value;
+  expect(sessionCookie(currentSession)).toBeTruthy();
+  expect(sessionCookie(currentSession)).not.toBe(sessionCookie(firstSession));
+  await page.context().addCookies(firstSession.cookies);
+  expect((await page.request.get("/exportar/tsa")).status()).toBe(404);
+  await page.context().addCookies(currentSession.cookies);
   await page.goto("/tsa/colaboradores");
   await expect(page.getByRole("heading", { name: "Minha equipe" })).toBeVisible();
   const member = page.locator(".team-member").filter({ hasText: scenario.worker.name });
@@ -636,6 +675,17 @@ test("colaborador terceirizado pode liderar a equipe da unidade onde atua", asyn
   await expect(member.locator(".team-details").getByText(scenario.hidden.item.name, { exact: true })).toBeVisible();
   await expect(member.locator(".team-details").getByText("Faltam 2 un.", { exact: true })).toBeVisible();
   await expect(page.getByText(scenario.outside.name, { exact: true })).toHaveCount(0);
+
+  await page.locator(".sidebar").getByRole("link", { name: "Trocar senha" }).click();
+  await page.locator('input[name="currentPassword"]').fill(newPassword);
+  await page.locator('input[name="password"]').fill("Final-63");
+  await page.locator('input[name="confirmation"]').fill("Final-63");
+  await page.getByRole("button", { name: "Salvar nova senha" }).click();
+  await expect(page).toHaveURL(/\/tsa$/);
+  expect((await page.request.get("/exportar/tsa")).ok()).toBe(true);
+  await page.context().addCookies(currentSession.cookies);
+  expect((await page.request.get("/exportar/tsa")).status()).toBe(404);
+  await signIn(page, { email, password: "Final-63" });
 });
 
 test("o rótulo do menu recolhido aparece acima do banner ao usar mouse ou teclado", async ({ page }) => {
@@ -1069,11 +1119,13 @@ test("Equipe filtra pendências e diferencia validades e configuração de itens
     companyId, name: "Gestor do painel de teste", role: "MANAGER", allUnits: false,
     units: { create: [{ unitId: scenario.unit.id }, { unitId: unit.id }] },
   } } } });
-  await db.warehouse.update({ where: { companyId_id: { companyId, id: scenario.warehouse.id } }, data: { contractNumber: "CTR-EQUIPE" } });
+  const teamContract = await db.warehouse.create({ data: {
+    companyId, unitId: scenario.unit.id, name: `Contrato da equipe ${scenario.tag}`, contractNumber: "CTR-EQUIPE",
+  } });
   const person = await db.employee.create({ data: {
-    companyId, unitId: scenario.unit.id, supervisorId: scenario.worker.supervisorId,
+    companyId, unitId: scenario.unit.id,
     name: `Pessoa com recebimento ${scenario.tag}`, registration: `F-${scenario.tag}`,
-    contractId: scenario.warehouse.id, jobTitle: "Função sem regra aplicável",
+    contractId: teamContract.id, jobTitle: "Função sem regra aplicável",
   } });
   const other = await db.employee.create({ data: {
     companyId, unitId: unit.id, name: `Pessoa sem configuração ${scenario.tag}`,
@@ -1108,8 +1160,7 @@ test("Equipe filtra pendências e diferencia validades e configuração de itens
   await filters.locator(".team-extra-filters > summary").click();
   await expect(filters.getByRole("combobox", { name: "Unidade" }).locator(`option[value="${scenario.outsideUnit.id}"]`)).toHaveCount(0);
   await filters.getByRole("combobox", { name: "Unidade" }).selectOption(person.unitId);
-  await filters.getByRole("combobox", { name: "Contrato", exact: true }).selectOption(scenario.warehouse.id);
-  await filters.getByRole("combobox", { name: "Gerência" }).selectOption(person.supervisorId!);
+  await filters.getByRole("combobox", { name: "Contrato", exact: true }).selectOption(teamContract.id);
   await filters.getByRole("combobox", { name: "Pendências" }).selectOption("confirmacao");
   await filters.getByRole("button", { name: "Filtrar" }).click();
   const card = page.locator(".team-member");
