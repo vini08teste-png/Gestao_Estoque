@@ -718,3 +718,101 @@ test("cadastra o item sem sair da entrega anterior ou da entrada de estoque", as
   const key = { companyId, warehouseId: scenario.warehouse.id, lotId: uniform.lots[0].id };
   await expect.poll(async () => (await db.stock.findUniqueOrThrow({ where: { companyId_warehouseId_lotId: key } })).quantity).toBe(5);
 });
+
+test("administrador corrige e apaga entregas com auditoria e saldo consistente", async ({ page }) => {
+  test.setTimeout(60_000);
+  const companyId = "tsa";
+  const email = `admin-historico-${scenario.tag}@example.test`;
+  const admin = await db.user.create({ data: {
+    email, passwordHash: scenario.manager.passwordHash,
+    scopes: { create: { companyId, name: "Administrador de teste", role: "ADMIN", allUnits: true } },
+  } });
+  const original = await db.delivery.create({ data: {
+    companyId, id: randomUUID(), employeeId: scenario.worker.id, equipmentId: scenario.uniform.item.id,
+    actorId: admin.id, quantity: 2, deliveredAt: new Date("2025-10-06"),
+  } });
+  const originalWhere = { companyId_id: { companyId, id: original.id } };
+  const historyRow = (item: string, employee: string) => page.getByRole("row").filter({ hasText: item }).filter({ hasText: employee });
+
+  await signIn(page, scenario.manager);
+  expect((await page.request.get(`/tsa/entregas?edit=${original.id}`)).status()).toBe(404);
+  expect((await page.request.get(`/tsa/entregas?apagar=${original.id}`)).status()).toBe(404);
+  await signOut(page);
+  await signIn(page, { email, password: scenario.manager.password });
+  await page.goto("/tsa/entregas");
+  const paperRow = historyRow(scenario.uniform.item.name, scenario.worker.name).filter({ hasText: "06/10/2025" });
+  await paperRow.getByRole("link", { name: "Editar", exact: true }).click();
+  await page.getByRole("combobox", { name: "Colaborador" }).selectOption(scenario.outside.id);
+  await page.getByRole("combobox", { name: "Item", exact: true }).selectOption(scenario.scarce.item.id);
+  await page.getByLabel("Quantidade").fill("3");
+  await page.getByLabel("Data da entrega").fill("2025-10-08");
+  await page.getByLabel("Motivo da correção").fill("Corrigido após conferência do registro.");
+  await page.getByRole("button", { name: "Salvar", exact: true }).click();
+  await expect(page.getByText("Entrega atualizada.")).toBeVisible();
+  expect(await db.delivery.findUniqueOrThrow({ where: originalWhere, include: { movements: true } })).toMatchObject({
+    employeeId: scenario.outside.id, equipmentId: scenario.scarce.item.id, quantity: 3, movements: [],
+  });
+  const corrected = historyRow(scenario.scarce.item.name, scenario.outside.name);
+  await corrected.getByRole("link", { name: "Apagar", exact: true }).click();
+  await page.getByLabel("Motivo da exclusão").fill("Registro duplicado.");
+  await page.getByRole("button", { name: "Apagar entrega" }).click();
+  await expect(page.getByText("Entrega removida do histórico.")).toBeVisible();
+  await expect(corrected).toHaveCount(0);
+  expect((await db.delivery.findUniqueOrThrow({ where: originalWhere })).voidedAt).toBeInstanceOf(Date);
+
+  const item = await db.equipment.create({ data: {
+    companyId, name: `Item corrigido ${scenario.tag}`, category: "UNIFORM", makerModel: "Teste", notes: "",
+  } });
+  const warehouseId = scenario.warehouse.id;
+  const lot = await db.equipmentLot.create({ data: { companyId, equipmentId: item.id, code: "CORRECAO" } });
+  const key = { companyId, warehouseId, lotId: lot.id };
+  await db.stock.create({ data: { ...key, quantity: 8 } });
+  const balance = async () => (await db.stock.findUniqueOrThrow({ where: { companyId_warehouseId_lotId: key } })).quantity;
+  await page.goto("/tsa/entregas?edit=novo");
+  await page.getByRole("combobox", { name: "Colaborador" }).selectOption(scenario.worker.id);
+  await page.getByRole("combobox", { name: "Almoxarifado" }).selectOption(warehouseId);
+  await page.getByRole("combobox", { name: "Item", exact: true }).selectOption(item.id);
+  await page.getByLabel("Quantidade").fill("3");
+  await page.getByRole("button", { name: "Salvar", exact: true }).click();
+  const stocked = historyRow(item.name, scenario.worker.name);
+  await expect(stocked).toBeVisible();
+  expect(await balance()).toBe(5);
+  const delivery = await db.delivery.findFirstOrThrow({ where: { companyId, equipmentId: item.id } });
+  await db.deliveryReceipt.create({ data: { companyId, deliveryId: delivery.id, actorId: scenario.employeeAccount.id } });
+  await stocked.getByRole("link", { name: "Editar", exact: true }).click();
+  await page.getByLabel("Quantidade").fill("2");
+  await page.getByLabel("Motivo da correção").fill("A quantidade correta era duas unidades.");
+  await page.getByRole("button", { name: "Salvar e continuar" }).click();
+  await expect(page.getByText("Entrega atualizada.")).toBeVisible();
+  expect(await balance()).toBe(6);
+  expect(await db.deliveryReceipt.count({ where: { companyId, deliveryId: delivery.id } })).toBe(0);
+  await page.getByRole("link", { name: "Voltar ao Histórico" }).click();
+  await stocked.getByRole("link", { name: "Apagar", exact: true }).click();
+  await page.getByLabel("Motivo da exclusão").fill("A entrega foi lançada em duplicidade.");
+  await page.getByRole("button", { name: "Apagar entrega" }).click();
+  await expect(page.getByText("Entrega removida do histórico.")).toBeVisible();
+  await expect(stocked).toHaveCount(0);
+  expect(await balance()).toBe(8);
+  expect(await db.equipmentEvent.count({ where: {
+    companyId, actorId: admin.id, subjectId: { in: [original.id, delivery.id] }, kind: { in: ["DELIVERY_EDITED", "DELIVERY_VOIDED"] },
+  } })).toBe(4);
+
+  const request = await db.equipmentRequest.create({ data: {
+    companyId, id: randomUUID(), employeeId: scenario.worker.id, unitId: scenario.unit.id,
+    equipmentId: item.id, quantity: 2, reason: "Pedido para conferir o estorno.", status: "WAITING_DELIVERY",
+  } });
+  await page.goto(`/tsa/entregas?solicitacao=${request.id}`);
+  await page.getByRole("button", { name: "Confirmar entrega" }).click();
+  await expect(stocked).toBeVisible();
+  expect(await balance()).toBe(6);
+  await stocked.getByRole("link", { name: "Apagar", exact: true }).click();
+  await page.getByLabel("Motivo da exclusão").fill("Atendimento lançado antes da entrega.");
+  await page.getByRole("button", { name: "Apagar entrega" }).click();
+  await expect(page.getByText("Entrega removida do histórico.")).toBeVisible();
+  await expect(stocked).toHaveCount(0);
+  const reopened = await db.equipmentRequest.findUniqueOrThrow({
+    where: { companyId_id: { companyId, id: request.id } }, include: { delivery: true },
+  });
+  expect(reopened).toMatchObject({ status: "WAITING_DELIVERY", delivery: null });
+  expect(await balance()).toBe(8);
+});

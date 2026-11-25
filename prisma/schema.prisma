@@ -312,6 +312,7 @@ model Delivery {
   suggestedAt    DateTime? @db.Date
   replacementAt  DateTime? @db.Date
   adjustmentNote String?
+  voidedAt       DateTime?
   createdAt      DateTime @default(now())
   employee       Employee @relation(fields: [companyId, employeeId], references: [companyId, id], onDelete: Restrict)
   equipment      Equipment @relation(fields: [companyId, equipmentId], references: [companyId, id], onDelete: Restrict)

@@ -3,8 +3,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
 import {
-  addStock, confirmReceipt, decideRequest, identifyItem, openRequest, registerDelivery, requestReplacement, retireDelivery,
-  removeExpectedItem, resetStockMinimum, saveEquipment, saveExpectedItem, saveRule, saveStockMinimum, saveWarehouse,
+  addStock, confirmReceipt, decideRequest, editDelivery, identifyItem, openRequest, registerDelivery, requestReplacement, retireDelivery,
+  removeExpectedItem, resetStockMinimum, saveEquipment, saveExpectedItem, saveRule, saveStockMinimum, saveWarehouse, voidDelivery,
 } from "@/app/equipment-actions";
 import { ActionForm } from "@/components/action-form";
 import { DeliveryFields } from "@/components/delivery-fields";
@@ -16,7 +16,7 @@ import { Icon } from "@/components/icon";
 import { canAdminister, type AccessScope } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { employeesWhere, unitsWhere } from "@/lib/directory";
-import { canSetStockMinimum, handlesStock, hasPersonalEquipment, operationalDeliveryWhere, ownEmployeeId, requestWhere } from "@/lib/equipment-access";
+import { canSetStockMinimum, deliveryCorrectionFields, handlesStock, hasPersonalEquipment, operationalDeliveryWhere, ownEmployeeId, personalDeliveryWhere, requestWhere } from "@/lib/equipment-access";
 import { brazilDay, formatDay, inputDay, latestByItem, requestLabels, retirementLabels, todayInBrazil } from "@/lib/equipment";
 import { inventoryTitle, itemCatalogTitle, operationRequestTab } from "@/lib/organization";
 import { openRequestStatuses } from "@/lib/reporting";
@@ -65,6 +65,12 @@ const textField = (label: string, name: string, value?: string, maxLength = 120)
   <label className="field">{label}<input name={name} defaultValue={value} maxLength={maxLength} required /></label>;
 const quantityField = <label className="field">Quantidade<input name="quantity" type="number" min={1} max={1_000_000} required /></label>;
 const receiptDate = new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", dateStyle: "short", timeStyle: "short" });
+const deliveryFeedback: Record<string, string> = {
+  "1": "Entrega registrada e saldo atualizado.",
+  ficha: "Entrega anterior registrada.",
+  editada: "Entrega atualizada.",
+  apagada: "Entrega removida do histórico.",
+};
 
 export async function Catalog({ scope, edit }: { scope: AccessScope; edit: string }) {
   if (!handlesStock(scope)) notFound();
@@ -400,14 +406,81 @@ export async function Requests({ scope, edit, status, sent, queue = "", personal
   </>;
 }
 
-export async function Deliveries({ scope, create, requestId, registered, paper = false, employeeId = "", personal = false, retired = false }: {
+async function DeliveryCorrection({ scope, id, remove }: { scope: AccessScope; id: string; remove: boolean }) {
+  const { companyId } = scope;
+  if (!canAdminister(scope)) notFound();
+  const row = await db.delivery.findUnique({
+    where: { companyId_id: { companyId, id }, voidedAt: null },
+    include: {
+      employee: { select: { id: true, name: true } }, equipment: { select: { id: true, name: true } },
+      proof: { select: { deliveryId: true } }, receipt: { select: { confirmedAt: true } },
+      retirement: { select: { retiredAt: true } }, request: { select: { openedAt: true } },
+      _count: { select: { replacementRequests: true } },
+    },
+  });
+  if (!row) notFound();
+  const fields = deliveryCorrectionFields(row);
+  const [people, items] = !remove && fields.assignment ? await Promise.all([
+    db.employee.findMany({
+      where: { companyId, OR: [{ active: true }, { id: row.employeeId }] },
+      select: { id: true, name: true, registration: true, unit: { select: { name: true } } }, orderBy: { name: "asc" },
+    }),
+    db.equipment.findMany({
+      where: { companyId, OR: [{ active: true }, { id: row.equipmentId }] },
+      select: { id: true, name: true }, orderBy: { name: "asc" },
+    }),
+  ]) : [[], []];
+  const title = remove ? "Apagar entrega" : "Editar entrega";
+  return <>
+    <Heading title={title} note={`${row.equipment.name} · ${row.employee.name}`}
+      action={<Link className="button" href={`/${companyId}/entregas`}>Voltar ao Histórico</Link>} />
+    <Editor title={remove ? "Confirmar exclusão" : "Dados da entrega"}>
+      {remove ? <ActionForm action={voidDelivery.bind(null, companyId, id)} label="Apagar entrega" destructive>
+        <dl className="delivery-summary">
+          <div><dt>Data da entrega</dt><dd>{formatDay(row.deliveredAt)}</dd></div>
+          <div><dt>Quantidade</dt><dd>{row.quantity}</dd></div>
+        </dl>
+        <p>O registro sairá do Histórico e de Meus itens. {row.warehouseId ?
+          "A quantidade será devolvida ao estoque de origem." : "O saldo do estoque será preservado."}</p>
+        {row.requestId && <p>A solicitação vinculada voltará para atendimento, quando aplicável.</p>}
+        <label className="field">Motivo da exclusão<textarea name="note" rows={3} maxLength={500} required /></label>
+      </ActionForm> : <ActionForm action={editDelivery.bind(null, companyId, id)} continueLabel="Salvar e continuar">
+        <div className="form-grid">
+          {fields.assignment && <>
+            <Choose label="Colaborador" name="employee" selected={row.employeeId} values={people.map((person) => ({
+              id: person.id, name: `${person.name} · ${person.registration} · ${person.unit.name}`,
+            }))} />
+            <Choose label="Item" name="equipment" selected={row.equipmentId} values={items} />
+          </>}
+          <label className="field">Data da entrega<input type="date" name="deliveredAt" defaultValue={inputDay(row.deliveredAt)}
+            max={inputDay(todayInBrazil())} min={row.request ? inputDay(brazilDay(row.request.openedAt)) : undefined} required /></label>
+          <label className="field">Quantidade<input type="number" name="quantity" min={1} max={1_000_000}
+            defaultValue={row.quantity} readOnly={!fields.quantity} required /></label>
+        </div>
+        {!fields.quantity && <p>A quantidade está vinculada a uma solicitação, troca ou retirada de uso.</p>}
+        {fields.quantity && row.warehouseId && <p>Alterar a quantidade ajusta o saldo do almoxarifado.
+          {row.receipt && " O colaborador precisará confirmar o recebimento da quantidade corrigida."}</p>}
+        <label className="field">Comprovante (opcional)<input type="file" name="proof" accept="application/pdf,image/png,image/jpeg" />
+          <small>{row.proof ? "Anexe um arquivo para substituir o comprovante atual." : "PDF, PNG ou JPEG de até 3 MB."}</small>
+        </label>
+        <label className="field">Motivo da correção<textarea name="note" rows={3} maxLength={500} required /></label>
+      </ActionForm>}
+    </Editor>
+  </>;
+}
+
+export async function Deliveries({ scope, create, requestId, registered, paper = false, employeeId = "", personal = false, retired = false,
+  correction = "", remove = "" }: {
   scope: AccessScope; create: boolean; requestId: string; registered: string; paper?: boolean; employeeId?: string; personal?: boolean; retired?: boolean;
+  correction?: string; remove?: string;
 }) {
   const { companyId } = scope;
   const root = `/${companyId}/entregas`;
   const own = personal || scope.role === "EMPLOYEE";
   if (own && !hasPersonalEquipment(scope)) notFound();
   const operator = !own && handlesStock(scope);
+  const admin = operator && canAdminister(scope);
+  if (correction || remove) return <DeliveryCorrection scope={scope} id={remove || correction} remove={Boolean(remove)} />;
   if (create || requestId || paper) {
     if (!operator) notFound();
     if (paper && requestId) notFound();
@@ -467,7 +540,7 @@ export async function Deliveries({ scope, create, requestId, registered, paper =
   }
 
   const rows = await db.delivery.findMany({
-    where: own ? { companyId, employeeId: ownEmployeeId(scope) } : operationalDeliveryWhere(scope),
+    where: own ? personalDeliveryWhere(scope) : operationalDeliveryWhere(scope),
     include: {
       employee: { select: { name: true } }, equipment: { select: { name: true } },
       stock: { select: { warehouse: { select: { name: true } }, lot: { select: { expiresAt: true } } } },
@@ -538,9 +611,7 @@ export async function Deliveries({ scope, create, requestId, registered, paper =
         <Link className="button" href={`${root}?edit=ficha`}>Registrar entregas anteriores</Link>
         <Link className="button primary" href={`${root}?edit=novo`}>Nova entrega</Link>
       </div>} />
-    {operator && registered && <p className="feedback success operation-feedback" role="status">{registered === "ficha" ?
-      "Entrega anterior registrada." :
-      "Entrega registrada e saldo atualizado."}</p>}
+    {operator && registered && <p className="feedback success operation-feedback" role="status">{deliveryFeedback[registered]}</p>}
     {own && <>
       {retired && <p className="feedback success operation-feedback" role="status">Item retirado de uso. A entrega ficou registrada no histórico.</p>}
       {pending.length > 0 && <section aria-labelledby="itens-a-confirmar">
@@ -564,7 +635,7 @@ export async function Deliveries({ scope, create, requestId, registered, paper =
       </>}
       <h2 className="section-title">Histórico de entregas</h2>
     </>}
-    <Records cardsOnMobile columns={["Item", ...(own ? [] : ["Colaborador"]), "Almoxarifado", "Quantidade", "Data", "Responsável", "Recebimento", "Situação do item", "Anexo"]}
+    <Records cardsOnMobile columns={["Item", ...(own ? [] : ["Colaborador"]), "Almoxarifado", "Quantidade", "Data", "Responsável", "Recebimento", "Situação do item", "Anexo", ...(admin ? ["Ações"] : [])]}
       rows={rows.map((row) => [row.id, row.equipment.name, ...(own ? [] : [row.employee.name]), row.stock?.warehouse.name ?? "—", row.quantity,
         <time className="delivery-day" dateTime={inputDay(row.deliveredAt)}>{formatDay(row.deliveredAt)}</time>,
         row.actor.scopes[0]?.name ?? "—",
@@ -572,6 +643,10 @@ export async function Deliveries({ scope, create, requestId, registered, paper =
         row.retirement ? <details className="record-details"><summary>Retirado de uso</summary>
           <p>{retirementLabels[row.retirement.reason]} · {receiptDate.format(row.retirement.retiredAt)}</p><p>{row.retirement.note}</p>
         </details> : "—",
-        row.proof ? <a className="text-action" href={`/comprovantes/${companyId}/${row.id}`}>Baixar</a> : "—"])} />
+        row.proof ? <a className="text-action" href={`/comprovantes/${companyId}/${row.id}`}>Baixar</a> : "—",
+        ...(admin ? [<div className="row-actions">
+          <Link className="text-action" href={`${root}?edit=${encodeURIComponent(row.id)}`}>Editar</Link>
+          <Link className="text-action danger" href={`${root}?apagar=${encodeURIComponent(row.id)}`}>Apagar</Link>
+        </div>] : [])])} />
   </>;
 }

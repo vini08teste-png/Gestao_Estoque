@@ -9,7 +9,7 @@ import { canAdminister, requireScope, type AccessScope } from "@/lib/auth";
 import { attachmentLimit, replacementPhotoTypes } from "@/lib/attachment-limits";
 import { db } from "@/lib/db";
 import { employeesWhere, unitsWhere } from "@/lib/directory";
-import { canSetStockMinimum, handlesStock, hasPersonalEquipment, ownEmployeeId, requestWhere } from "@/lib/equipment-access";
+import { canSetStockMinimum, deliveryCorrectionFields, handlesStock, hasPersonalEquipment, ownEmployeeId, requestWhere } from "@/lib/equipment-access";
 import { brazilDay, jobTitleKey, retirementLabels, todayInBrazil } from "@/lib/equipment";
 import { text, type FormResult } from "@/lib/forms";
 import { finishSave } from "@/lib/form-navigation";
@@ -229,7 +229,7 @@ async function latestOwnedDelivery(tx: Prisma.TransactionClient, scope: AccessSc
   const companyId = scope.companyId;
   const employeeId = ownEmployeeId(scope);
   const delivery = await tx.delivery.findUnique({
-    where: { companyId_id: { companyId, id: deliveryId }, employeeId },
+    where: { companyId_id: { companyId, id: deliveryId }, employeeId, voidedAt: null },
     select: {
       equipmentId: true, warehouseId: true, equipment: { select: { name: true, active: true } },
       receipt: { select: { deliveryId: true } }, retirement: { select: { deliveryId: true } },
@@ -237,7 +237,7 @@ async function latestOwnedDelivery(tx: Prisma.TransactionClient, scope: AccessSc
   });
   if (!delivery) return invalid("A entrega não está disponível na sua área pessoal.");
   const latest = await tx.delivery.findFirst({
-    where: { companyId, employeeId, equipmentId: delivery.equipmentId,
+    where: { companyId, employeeId, equipmentId: delivery.equipmentId, voidedAt: null,
       ...((delivery.receipt || !delivery.warehouseId) && { OR: [{ receipt: { isNot: null } }, { warehouseId: null }] }) },
     orderBy: [{ deliveredAt: "desc" }, { createdAt: "desc" }, { id: "desc" }],
     select: { id: true },
@@ -347,6 +347,34 @@ async function readAttachment(data: FormData, fieldName: "proof" | "replacementP
   return { data: { mime, content, sha256: createHash("sha256").update(content).digest("hex") }, name: file.name.slice(0, 180) };
 }
 
+async function deliveryStock(tx: Prisma.TransactionClient, companyId: string, warehouseId: string, equipmentId: string, unitId: string, today: Date) {
+  return tx.stock.findMany({
+    where: { companyId, warehouseId, quantity: { gt: 0 }, warehouse: { active: true, unitId },
+      lot: { ...availableLotWhere(today), equipmentId } },
+    orderBy: [{ lot: { expiresAt: { sort: "asc", nulls: "last" } } }, { lotId: "asc" }],
+    select: { lotId: true, quantity: true },
+  });
+}
+
+async function deductDeliveryStock(tx: Prisma.TransactionClient, location: { companyId: string; warehouseId: string },
+  deliveryId: string, actorId: string, stocks: { lotId: string; quantity: number }[], quantity: number) {
+  if (stocks.reduce((total, stock) => total + stock.quantity, 0) < quantity) {
+    return invalid("O almoxarifado selecionado não tem saldo disponível suficiente para este item.");
+  }
+  let remaining = quantity;
+  for (const stock of stocks) {
+    if (!remaining) break;
+    const allocated = Math.min(remaining, stock.quantity);
+    const key = { ...location, lotId: stock.lotId };
+    const balance = await tx.stock.updateMany({
+      where: { ...key, quantity: { gte: allocated } }, data: { quantity: { decrement: allocated } },
+    });
+    if (balance.count !== 1) return invalid("O saldo mudou. Confira a quantidade disponível e tente novamente.");
+    await tx.stockMovement.create({ data: { ...key, actorId, delta: -allocated, deliveryId } });
+    remaining -= allocated;
+  }
+}
+
 export async function registerDelivery(companyId: string, id: string, requestId: string | null, paper: boolean, _: FormResult, data: FormData) {
   const result = await mutate(companyId, handlesStock, async (tx, scope, actorId) => {
     if (await tx.delivery.findUnique({ where: { companyId_id: { companyId, id }, actorId } })) return;
@@ -363,33 +391,15 @@ export async function registerDelivery(companyId: string, id: string, requestId:
     if (request && deliveredAt < brazilDay(request.openedAt)) return invalid("A data não pode ser anterior à abertura da solicitação.");
     const proof = await readAttachment(data, "proof");
     const warehouseId = paper ? null : field(data, "warehouse", "Almoxarifado");
-    const stocks = warehouseId ? await tx.stock.findMany({
-      where: { companyId, warehouseId, quantity: { gt: 0 }, warehouse: { active: true, unitId: employee.unitId },
-        lot: { ...availableLotWhere(today), equipmentId } },
-      orderBy: [{ lot: { expiresAt: { sort: "asc", nulls: "last" } } }, { lotId: "asc" }],
-      select: { lotId: true, quantity: true },
-    }) : [];
-    if (!paper && stocks.reduce((total, stock) => total + stock.quantity, 0) < quantity) {
+    const stocks = warehouseId ? await deliveryStock(tx, companyId, warehouseId, equipmentId, employee.unitId, today) : [];
+    if (warehouseId && !stocks.length) {
       return invalid("O almoxarifado selecionado não tem saldo disponível suficiente para este item.");
     }
     await tx.delivery.create({
       data: { companyId, warehouseId, lotId: stocks[0]?.lotId ?? null, id, employeeId, actorId, equipmentId, quantity, deliveredAt,
         requestId: request?.id, ...(proof && { proof: { create: { ...proof.data, name: proof.name } } }) },
     });
-    if (warehouseId) {
-      let remaining = quantity;
-      for (const stock of stocks) {
-        if (!remaining) break;
-        const allocated = Math.min(remaining, stock.quantity);
-        const key = { companyId, warehouseId, lotId: stock.lotId };
-        const balance = await tx.stock.updateMany({
-          where: { ...key, quantity: { gte: allocated } }, data: { quantity: { decrement: allocated } },
-        });
-        if (balance.count !== 1) return invalid("O saldo mudou. Confira a quantidade disponível e tente novamente.");
-        await tx.stockMovement.create({ data: { ...key, actorId, delta: -allocated, deliveryId: id } });
-        remaining -= allocated;
-      }
-    }
+    if (warehouseId) await deductDeliveryStock(tx, { companyId, warehouseId }, id, actorId, stocks, quantity);
     await tx.equipmentEvent.create({ data: { companyId, subjectId: id, actorId, kind: paper ? "PAPER_RECORDED" : "DELIVERED" } });
     if (request) {
       await tx.equipmentRequest.update({ where: { companyId_id: { companyId, id: request.id } }, data: { status: "COMPLETED" } });
@@ -402,10 +412,118 @@ export async function registerDelivery(companyId: string, id: string, requestId:
   redirect(`/${companyId}/entregas?registrada=1`);
 }
 
+async function restoreDeliveryStock(tx: Prisma.TransactionClient, companyId: string, warehouseId: string, deliveryId: string,
+  actorId: string, recordedQuantity: number, restoreQuantity: number) {
+  const movements = await tx.stockMovement.findMany({ where: { companyId, warehouseId, deliveryId },
+    orderBy: [{ occurredAt: "asc" }, { id: "asc" }], select: { lotId: true, delta: true } });
+  const net = new Map<string, number>();
+  for (const { lotId, delta } of movements) net.set(lotId, (net.get(lotId) ?? 0) - delta);
+  const positions = Array.from(net.entries()).reverse();
+  if (positions.some(([, quantity]) => quantity < 0) || positions.reduce((sum, [, quantity]) => sum + quantity, 0) !== recordedQuantity) {
+    return invalid("Não foi possível conferir as baixas desta entrega para devolver o saldo.");
+  }
+  let remaining = restoreQuantity;
+  for (const [lotId, quantity] of positions) {
+    if (!remaining) break;
+    const delta = Math.min(remaining, quantity);
+    if (!delta) continue;
+    const key = { companyId, warehouseId, lotId };
+    const balance = await tx.stock.updateMany({
+      where: { ...key, quantity: { lte: 2_147_483_647 - delta } }, data: { quantity: { increment: delta } },
+    });
+    if (balance.count !== 1) return invalid("Não foi possível devolver essa quantidade ao estoque.");
+    await tx.stockMovement.create({ data: { ...key, deliveryId, actorId, delta } });
+    remaining -= delta;
+  }
+}
+
+export async function editDelivery(companyId: string, id: string, _: FormResult, data: FormData) {
+  const result = await mutate(companyId, canAdminister, async (tx, scope, actorId) => {
+    const key = { companyId_id: { companyId, id } };
+    const delivery = await tx.delivery.findUnique({ where: { ...key, voidedAt: null }, include: {
+      employee: { select: { unitId: true } }, receipt: true, retirement: { select: { retiredAt: true } },
+      request: { select: { openedAt: true } }, _count: { select: { replacementRequests: true } }, proof: { select: { sha256: true } },
+    } });
+    if (!delivery) return invalid("Entrega indisponível no histórico.");
+    const note = field(data, "note", "Motivo da correção", 500);
+    const deliveredAt = parseDay(text(data, "deliveredAt"));
+    const today = todayInBrazil();
+    if (deliveredAt > today) return invalid("A data da entrega não pode ser futura.");
+    if (delivery.request && deliveredAt < brazilDay(delivery.request.openedAt)) return invalid("A data não pode ser anterior à abertura da solicitação.");
+    if (delivery.receipt && deliveredAt > brazilDay(delivery.receipt.confirmedAt)) return invalid("A entrega deve anteceder ou coincidir com a confirmação de recebimento.");
+    if (delivery.retirement && deliveredAt > brazilDay(delivery.retirement.retiredAt)) return invalid("A entrega deve anteceder ou coincidir com a retirada de uso.");
+    const editable = deliveryCorrectionFields(delivery);
+    const quantity = editable.quantity ? count(data) : delivery.quantity;
+    const employeeId = editable.assignment ? field(data, "employee", "Colaborador") : delivery.employeeId;
+    const equipmentId = editable.assignment ? field(data, "equipment", "Item") : delivery.equipmentId;
+    if (employeeId !== delivery.employeeId && !await tx.employee.findFirst({
+      where: { ...employeesWhere(scope), id: employeeId, active: true }, select: { id: true },
+    })) return invalid("Selecione um colaborador ativo desta empresa.");
+    if (equipmentId !== delivery.equipmentId && !await tx.equipment.findUnique({
+      where: { companyId_id: { companyId, id: equipmentId }, active: true }, select: { id: true },
+    })) return invalid("Selecione um item ativo desta empresa.");
+    const proof = await readAttachment(data, "proof");
+    const difference = quantity - delivery.quantity;
+    if (!difference && deliveredAt.getTime() === delivery.deliveredAt.getTime() &&
+        employeeId === delivery.employeeId && equipmentId === delivery.equipmentId && !proof) return;
+    if (delivery.warehouseId && difference > 0) {
+      const stocks = await deliveryStock(tx, companyId, delivery.warehouseId, equipmentId, delivery.employee.unitId, today);
+      await deductDeliveryStock(tx, { companyId, warehouseId: delivery.warehouseId }, id, actorId, stocks, difference);
+    }
+    if (delivery.warehouseId && difference < 0) {
+      await restoreDeliveryStock(tx, companyId, delivery.warehouseId, id, actorId, delivery.quantity, -difference);
+    }
+    if (difference && delivery.receipt) await tx.deliveryReceipt.delete({ where: { companyId_deliveryId: { companyId, deliveryId: id } } });
+    const updatedProof = proof && { ...proof.data, name: proof.name };
+    await tx.delivery.update({
+      where: key, data: { deliveredAt, quantity, employeeId, equipmentId,
+        ...(updatedProof && { proof: { upsert: { create: updatedProof, update: updatedProof } } }) },
+    });
+    await tx.equipmentEvent.create({ data: { companyId, subjectId: id, actorId, kind: "DELIVERY_EDITED", note: JSON.stringify({
+      reason: note,
+      before: { deliveredAt: delivery.deliveredAt, quantity: delivery.quantity, employeeId: delivery.employeeId,
+        equipmentId: delivery.equipmentId, proofHash: delivery.proof?.sha256, receipt: difference ? delivery.receipt : undefined },
+      after: { deliveredAt, quantity, employeeId, equipmentId, proofHash: updatedProof?.sha256 ?? delivery.proof?.sha256 },
+    }) } });
+  });
+  return finishSave(result.success ? { success: "Entrega atualizada." } : result, data, `/${companyId}/entregas?registrada=editada`);
+}
+
+export async function voidDelivery(companyId: string, id: string, _: FormResult, data: FormData) {
+  const result = await mutate(companyId, canAdminister, async (tx, _scope, actorId) => {
+    const key = { companyId_id: { companyId, id } };
+    const delivery = await tx.delivery.findUnique({ where: key, select: { voidedAt: true, warehouseId: true, quantity: true, requestId: true,
+      request: { select: { replacementFor: { select: { voidedAt: true } } } },
+      replacementRequests: { where: { status: { in: ["WAITING_CATALOG", "PENDING_APPROVAL", "WAITING_DELIVERY"] } }, select: { id: true } },
+    } });
+    if (!delivery) return invalid("Entrega indisponível no histórico.");
+    if (delivery.voidedAt) return;
+    const note = field(data, "note", "Motivo da exclusão", 500);
+    if (delivery.warehouseId) {
+      await restoreDeliveryStock(tx, companyId, delivery.warehouseId, id, actorId, delivery.quantity, delivery.quantity);
+    }
+    await tx.delivery.update({ where: key, data: { voidedAt: new Date(), requestId: null } });
+    if (delivery.requestId) {
+      const status = delivery.request?.replacementFor?.voidedAt ? "CANCELLED" : "WAITING_DELIVERY";
+      await tx.equipmentRequest.update({ where: { companyId_id: { companyId, id: delivery.requestId } }, data: { status } });
+      await tx.equipmentEvent.create({ data: { companyId, subjectId: delivery.requestId, actorId, kind: status, note: id } });
+    }
+    for (const { id: replacementId } of delivery.replacementRequests) {
+      await tx.equipmentRequest.update({ where: { companyId_id: { companyId, id: replacementId } }, data: { status: "CANCELLED" } });
+      await tx.equipmentEvent.create({ data: { companyId, subjectId: replacementId, actorId, kind: "CANCELLED", note: id } });
+    }
+    await tx.equipmentEvent.create({ data: { companyId, subjectId: id, actorId, kind: "DELIVERY_VOIDED", note: JSON.stringify({
+      reason: note, requestId: delivery.requestId, quantity: delivery.quantity,
+    }) } });
+  });
+  if (result.success) redirect(`/${companyId}/entregas?registrada=apagada`);
+  return result;
+}
+
 export async function confirmReceipt(companyId: string, deliveryId: string, _: FormResult) {
   return mutate(companyId, hasPersonalEquipment, async (tx, scope, actorId) => {
     const delivery = await tx.delivery.findUnique({
-      where: { companyId_id: { companyId, id: deliveryId }, employeeId: ownEmployeeId(scope) },
+      where: { companyId_id: { companyId, id: deliveryId }, employeeId: ownEmployeeId(scope), voidedAt: null },
       select: { receipt: { select: { deliveryId: true } } },
     });
     if (!delivery) return invalid("Esta entrega não está no seu histórico pessoal.");

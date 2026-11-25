@@ -3,7 +3,7 @@ import type { Prisma } from "@/generated/prisma/client";
 import type { AccessScope } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { unitsWhere } from "@/lib/directory";
-import { deliveriesAwaitingReceipt, operationalDeliveryWhere, ownEmployeeId, requestWhere } from "@/lib/equipment-access";
+import { deliveriesAwaitingReceipt, operationalDeliveryWhere, ownEmployeeId, personalDeliveryWhere, requestWhere } from "@/lib/equipment-access";
 import { brazilDay, formatDay, plusDays, requestLabels, todayInBrazil } from "@/lib/equipment";
 
 export const alertLabels = {
@@ -84,7 +84,7 @@ export function deadlineStatus(row: Deadline, today: Date, thresholds: number[])
 }
 
 export function unitDeliveryWhere(scope: AccessScope, unit = "", personal = false): Prisma.DeliveryWhereInput {
-  if (personal || scope.role === "EMPLOYEE") return { companyId: scope.companyId, employeeId: ownEmployeeId(scope) };
+  if (personal || scope.role === "EMPLOYEE") return personalDeliveryWhere(scope);
   const access = operationalDeliveryWhere(scope);
   return unit ? { AND: [access, { OR: [{ stock: { warehouse: { unitId: unit } } }, { warehouseId: null, employee: { unitId: unit } }] }] } : access;
 }

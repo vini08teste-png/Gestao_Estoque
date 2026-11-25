@@ -63,7 +63,7 @@ A [documentação do sistema](docs/README.md) detalha o comportamento implementa
 - Solicitação sem aprovação: `aguardando_entrega -> concluida`.
 - Uma solicitação por item. O atendimento é integral, e pedidos em aberto podem ser cancelados.
 - Entrega direta por operador autorizado continua permitida.
-- Registros de entrega não devem ser apagados; correções devem ser auditáveis.
+- O administrador pode editar ou apagar registros no Histórico mediante justificativa. A exclusão mantém o registro para auditoria e estorna a baixa, quando houver.
 - Anexos de comprovantes devem ser vinculados à entrega, protegidos por autorização e integridade.
 - A entrega para reposição por dano ou desgaste segue o fluxo de estoque e entrega.
 - O pedido de troca aceita texto, foto ou ambos como justificativa. A foto fica vinculada ao pedido e disponível para visualização conforme as permissões da solicitação.

@@ -39,6 +39,12 @@ Em **Histórico → Registrar entregas anteriores**, escolha o colaborador e o i
 
 O registro aparece em **Itens em uso** com a indicação **Entrega anterior**. O sistema preserva o saldo do estoque e registra o responsável pelo lançamento.
 
+## Corrigir o Histórico
+
+Como administrador, abra **Editar** ou **Apagar** na linha da entrega e informe o motivo. A edição permite corrigir data e comprovante. A quantidade também pode ser corrigida quando estiver livre de vínculos com pedido, troca ou retirada. Em entregas anteriores sem comprovante ou vínculos, é possível corrigir o colaborador e o item.
+
+As correções de quantidade ajustam o estoque quando a entrega teve baixa. Se o colaborador já havia confirmado, o sistema pede que ele confirme a quantidade corrigida. Ao apagar uma entrega, o sistema a remove das telas operacionais, estorna a baixa quando houver e mantém a justificativa e o responsável na auditoria. A solicitação de origem volta à fila quando a entrega vinculada for apagada e o pedido ainda puder ser atendido.
+
 ## Confirmar o recebimento
 
 O operador registra a saída. Em seguida, o destinatário abre **Meus itens → Aguardando confirmação** e clica em **Confirmo que recebi**. O sistema registra a pessoa e a data/hora da confirmação. Essa ação é feita separadamente e mantém o saldo já registrado na entrega.

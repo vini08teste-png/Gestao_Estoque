@@ -251,6 +251,9 @@ button:disabled { cursor: wait; opacity: .68; }
 .password-help summary { color: var(--brand); cursor: pointer; font-weight: 650; }
 .password-help p { margin-top: 8px; }
 .row-actions { display: flex; flex-wrap: wrap; gap: 4px 12px; min-width: 130px; }
+.button.primary.danger { background: #a51e22; border-color: #a51e22; }
+.button.primary.danger:hover { background: #76161c; border-color: #76161c; }
+.text-action.danger { color: #a51e22; }
 .unit-checkboxes { display: grid; gap: 8px; }
 .badge.deadline-danger { background: #fae8eb; color: #862139; }
 .badge.deadline-warning { background: #fff1d6; color: #764a10; }

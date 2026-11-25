@@ -351,9 +351,11 @@ export default async function CompanyPage({ params, searchParams }: {
     estoque: <Inventory scope={scope} operation={typeof search.acao === "string" ? search.acao : ""} registered={search.entrada === "1"}
       warehouseId={typeof search.almoxarifado === "string" ? search.almoxarifado : ""} />,
     entregas: <Deliveries scope={scope} create={edit === "novo"} paper={edit === "ficha"}
+      correction={edit !== "novo" && edit !== "ficha" ? edit : ""}
+      remove={typeof search.apagar === "string" ? search.apagar : ""}
       employeeId={(edit === "ficha" || search.registrada === "ficha") && typeof search.colaborador === "string" ? search.colaborador : ""}
       requestId={typeof search.solicitacao === "string" ? search.solicitacao : ""}
-      registered={search.registrada === "ficha" || search.registrada === "1" ? search.registrada : ""} />,
+      registered={typeof search.registrada === "string" && ["ficha", "1", "editada", "apagada"].includes(search.registrada) ? search.registrada : ""} />,
     solicitacoes: <Requests scope={scope} edit={edit} status={typeof search.status === "string" ? search.status : ""}
       queue={typeof search.fila === "string" ? search.fila : ""} sent={search.enviada === "1"} />,
     "meus-epis": <Deliveries scope={scope} create={false} requestId="" registered="" personal retired={search.retirado === "1"} />,
