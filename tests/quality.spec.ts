@@ -97,7 +97,7 @@ test("uma entrega por item usa o saldo combinado do almoxarifado", async ({ page
   await db.deliveryReceipt.create({ data: { companyId, deliveryId: delivery.id, actorId: scenario.employeeAccount.id } });
 });
 
-test("gestor concede acesso de encarregado dentro das unidades autorizadas", async ({ page }) => {
+test("gestor concede acesso de Gerência dentro das unidades autorizadas", async ({ page }) => {
   const companyId = "tsa";
   const person = await db.employee.create({ data: {
     companyId, unitId: scenario.unit.id, registration: `LUK-${scenario.tag}`,
@@ -107,8 +107,9 @@ test("gestor concede acesso de encarregado dentro das unidades autorizadas", asy
   const openGrant = async (name: string) => {
     await page.goto("/tsa/colaboradores");
     const card = page.locator(".team-member").filter({ has: page.getByText(name, { exact: true }) });
-    await card.locator("summary").click();
-    await card.getByRole("link", { name: "Dar acesso de encarregado" }).click();
+    await card.locator(":scope > summary").click();
+    await card.locator(".team-actions > summary").click();
+    await card.getByRole("link", { name: "Dar acesso de Gerência" }).click();
   };
 
   await signIn(page, scenario.operator);
@@ -121,13 +122,13 @@ test("gestor concede acesso de encarregado dentro das unidades autorizadas", asy
   await openGrant(person.name);
   await page.getByLabel("E-mail de acesso").fill(scenario.employeeAccount.email);
   await page.getByLabel("Senha temporária").fill("Inicial7");
-  await page.getByRole("button", { name: "Dar acesso de encarregado" }).click();
+  await page.getByRole("button", { name: "Dar acesso de Gerência" }).click();
   await expect(page.locator("form").getByRole("alert")).toContainText("Este e-mail já tem uma conta.");
   const email = `tecnica-luk-${scenario.tag}@example.test`;
   await page.getByLabel("E-mail de acesso").fill(email);
   await page.getByLabel("Senha temporária").fill("Inicial7");
-  await page.getByRole("button", { name: "Dar acesso de encarregado" }).click();
-  await expect(page.getByText("Acesso de encarregado ativo.")).toBeVisible();
+  await page.getByRole("button", { name: "Dar acesso de Gerência" }).click();
+  await expect(page.getByText("Acesso de Gerência ativo.")).toBeVisible();
   const created = await db.user.findUniqueOrThrow({ where: { email }, include: { scopes: true } });
   expect(created.mustChangePassword).toBe(true);
   expect(created.scopes).toMatchObject([{ companyId, employeeId: person.id, role: "SUPERVISOR", active: true, allUnits: false }]);
@@ -142,8 +143,8 @@ test("gestor concede acesso de encarregado dentro das unidades autorizadas", asy
   } });
   await openGrant(existing.name);
   await expect(page.getByLabel("Senha temporária")).toHaveCount(0);
-  await page.getByRole("button", { name: "Dar acesso de encarregado" }).click();
-  await expect(page.getByText("Acesso de encarregado ativo.")).toBeVisible();
+  await page.getByRole("button", { name: "Dar acesso de Gerência" }).click();
+  await expect(page.getByText("Acesso de Gerência ativo.")).toBeVisible();
   const promoted = await db.userScope.findUniqueOrThrow({
     where: { companyId_userId: { companyId, userId: account.id } }, include: { user: true },
   });
@@ -172,6 +173,7 @@ test("restringe histórico, exportação, comprovantes e pedidos à empresa e à
 
   await signOut(page);
   await signIn(page, scenario.supervisor);
+  await expect(page.locator(".sidebar .account-info")).toContainText("Gerência");
   await page.getByRole("link", { name: /Pedidos aguardando sua decisão/ }).click();
   await expect(page).toHaveURL(/\/tsa\/solicitacoes\?status=PENDING_APPROVAL$/);
   await expect(page.getByRole("link", { name: "Meus pedidos" })).toBeVisible();
@@ -206,7 +208,7 @@ test("o servidor revalida a equipe quando uma aprovação já aberta é enviada"
   }
 });
 
-test("encarregado rejeita um pedido com justificativa e aprova outro para entrega", async ({ page }) => {
+test("perfil Gerência rejeita um pedido com justificativa e aprova outro para entrega", async ({ page }) => {
   await signIn(page, scenario.employeeAccount);
   for (const reason of ["Pedido para rejeição", "Pedido para entrega"]) {
     await page.goto("/tsa/minhas-solicitacoes?edit=novo");
@@ -486,9 +488,11 @@ test("pedidos vão direto para atendimento e os perfis operacionais veem o saldo
   for (const account of [scenario.manager, scenario.supervisor, scenario.operator]) {
     await signIn(page, account);
     await expect(page.getByRole("link", { name: /Pedidos aguardando sua decisão/ })).toHaveCount(0);
-    await page.getByRole("link", { name: /Itens com estoque baixo ou zerado/ }).click();
-    await expect(page.getByRole("heading", { name: "Alertas de estoque" })).toBeVisible();
-    await expect(page.getByRole("region", { name: "Estoque baixo ou zerado" })).toContainText(scenario.uniform.item.name);
+    const stockPriority = page.getByRole("region", { name: "Estoque baixo ou zerado" });
+    await expect(stockPriority.getByText(/com saldo baixo/)).toBeVisible();
+    await stockPriority.getByRole("link", { name: /itens com estoque baixo ou zerado/i }).click();
+    await expect(page.getByRole("link", { name: /^Estoque baixo ou zerado/ })).toHaveAttribute("aria-current", "page");
+    await expect(page.getByRole("region", { name: "Alertas identificados" })).toContainText(scenario.uniform.item.name);
     await expect(page.getByText(scenario.hidden.item.name, { exact: true })).toHaveCount(0);
     await page.goto("/tsa/solicitacoes?status=WAITING_DELIVERY");
     await expect(page.getByRole("article").filter({ hasText: "Pedido com saldo" })).toContainText("Disponível em estoque");
@@ -497,14 +501,27 @@ test("pedidos vão direto para atendimento e os perfis operacionais veem o saldo
     await expect(shortage).toContainText("Verifique reposição ou compra");
     if (account !== scenario.operator) await signOut(page);
   }
-  await page.goto("/tsa/alertas?tipo=demanda");
+  await page.goto("/tsa/alertas");
+  const categories = page.getByRole("navigation", { name: "Categorias de alertas" });
+  const alerts = page.getByRole("region", { name: "Alertas identificados" });
+  await expect(alerts.getByRole("row").nth(1)).toContainText(/Estoque (baixo|zerado)/);
+  await page.getByLabel("Unidade").selectOption(scenario.unit.id);
+  await page.getByRole("button", { name: "Filtrar" }).click();
+  await expect(page).toHaveURL(new RegExp(`unidade=${scenario.unit.id}`));
+  await categories.getByRole("link", { name: /^Validade do produto/ }).click();
+  await expect(alerts).toContainText("Vencido");
+  await expect(alerts).not.toContainText("Estoque baixo");
+  await expect(page.getByLabel("Unidade")).toHaveValue(scenario.unit.id);
+  await categories.getByRole("link", { name: /^Saldo para pedidos/ }).click();
   const [warehouseId, lotId] = scenario.uniform.stockValue.split("|");
   const stock = await db.stock.findUniqueOrThrow({ where: { companyId_warehouseId_lotId: { companyId, warehouseId, lotId } } });
-  const demand = page.getByRole("region", { name: "Saldo para pedidos em aberto" }).getByRole("listitem")
-    .filter({ hasText: scenario.uniform.item.name });
+  const demand = alerts.getByRole("row").filter({ hasText: scenario.uniform.item.name });
   await expect(demand).toContainText(`9 pedidas · ${stock.quantity} disponíveis`);
   await expect(demand).toContainText(`Faltam ${9 - stock.quantity} un.`);
-  await page.goto("/tsa/solicitacoes?fila=falta-estoque");
+  await page.setViewportSize({ width: 360, height: 800 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(360);
+  await demand.getByRole("link", { name: "Ver pedidos com falta de estoque" }).click();
+  await page.setViewportSize({ width: 1280, height: 720 });
   await expect(page.getByRole("article").filter({ hasText: "Pedido com saldo" })).toHaveCount(0);
   await expect(page.getByRole("article").filter({ hasText: "Pedido sem saldo suficiente" })).toBeVisible();
   await page.goto("/tsa/solicitacoes?fila=identificar");
@@ -522,9 +539,9 @@ test("pedidos vão direto para atendimento e os perfis operacionais veem o saldo
 test("colaborador terceirizado pode liderar a equipe da unidade onde atua", async ({ page }) => {
   test.setTimeout(60_000);
   const companyId = "tsa";
-  const name = `Encarregado terceirizado ${scenario.tag}`;
+  const name = `Gerência terceirizada ${scenario.tag}`;
   const registration = `EXT-${scenario.tag}`;
-  const email = `encarregado-luk-${scenario.tag}@example.test`;
+  const email = `gerencia-luk-${scenario.tag}@example.test`;
   const adminEmail = `admin-luk-${scenario.tag}@example.test`;
   const password = scenario.supervisor.password;
   const temporaryPassword = "Tmp-61";
@@ -547,7 +564,7 @@ test("colaborador terceirizado pode liderar a equipe da unidade onde atua", asyn
   await page.getByLabel(/Empresa terceirizada/).fill("LUK");
   await page.locator('select[name="unit"]').selectOption(scenario.unit.id);
   await page.getByLabel("Setor").fill("Operação");
-  await page.getByLabel("Função").fill("Encarregado");
+  await page.getByLabel("Função").fill("Responsável da Gerência");
   await page.getByRole("button", { name: "Salvar", exact: true }).click();
   await expect(page).toHaveURL(/\/colaboradores$/);
   await page.goto("/tsa/colaboradores?q=luk");
@@ -586,7 +603,8 @@ test("colaborador terceirizado pode liderar a equipe da unidade onde atua", asyn
   await page.goto("/tsa/colaboradores");
   await expect(page.getByRole("heading", { name: "Minha equipe" })).toBeVisible();
   const member = page.locator(".team-member").filter({ hasText: scenario.worker.name });
-  await member.locator("summary").click();
+  await member.locator(":scope > summary").click();
+  await member.getByRole("tab", { name: "Itens esperados" }).click();
   await expect(member.locator(".team-details").getByText(scenario.hidden.item.name, { exact: true })).toBeVisible();
   await expect(member.locator(".team-details").getByText("Faltam 2 un.", { exact: true })).toBeVisible();
   await expect(page.getByText(scenario.outside.name, { exact: true })).toHaveCount(0);
@@ -632,10 +650,10 @@ test("o gestor define um mínimo na unidade e o alerta usa o saldo elegível", a
   await page.getByRole("button", { name: "Salvar e continuar" }).click();
   await expect(page.getByRole("status")).toHaveText("Alterações salvas.");
   await page.goto("/tsa/alertas?tipo=estoque");
-  const alert = page.getByRole("region", { name: "Estoque baixo ou zerado" })
-    .getByRole("listitem").filter({ hasText: scenario.hidden.item.name });
-  await expect(alert).toContainText("Mínimo 20 un.");
-  await expect(alert).toContainText("Sem saldo disponível");
+  const alert = page.getByRole("region", { name: "Alertas identificados" })
+    .getByRole("row").filter({ hasText: scenario.hidden.item.name });
+  await expect(alert).toContainText("0 / 20 un.");
+  await expect(alert).toContainText("Estoque zerado");
   await page.goto("/tsa/estoque?acao=minimos");
   await page.getByRole("button", { name: "Usar padrão" }).click();
   await expect(page.locator("tbody tr").filter({ hasText: scenario.hidden.item.name })).toHaveCount(0);
@@ -882,7 +900,7 @@ test("captura, revisa e salva uma foto como comprovante de entrega", async ({ pa
       return stream;
     };
   });
-  await signIn(page, scenario.manager);
+  await signIn(page, scenario.operator);
   await page.goto(`/tsa/entregas?edit=ficha&colaborador=${scenario.worker.id}`);
   await page.getByRole("combobox", { name: "Item", exact: true }).selectOption(scenario.uniform.item.id);
   await page.getByLabel("Data da entrega").fill("2025-07-15");
@@ -975,4 +993,118 @@ test("troca registra a data de devolução e conserva o saldo do item recebido p
   await page.goto("/tsa/meus-epis");
   const originalCard = page.getByRole("region", { name: "Itens em uso" }).getByRole("article").filter({ hasText: originalItem.name });
   await expect(originalCard.locator("dd").first()).toHaveText("1");
+});
+
+test("consulta a base importada e pede escolha para um CA com variantes", async ({ page }) => {
+  const url = "/api/ca-catalogo?empresa=tsa&ca=13";
+  expect((await page.request.get(url)).status()).toBe(401);
+  await signIn(page, scenario.operator);
+  const response = await page.request.get(url);
+  expect(response.ok()).toBe(true);
+  const { exportedOn, results } = await response.json();
+  expect(results).toHaveLength(1);
+  const [entry] = results;
+  await page.goto("/tsa/epis?edit=novo");
+  await page.getByLabel("CA", { exact: true }).fill("00013");
+  await page.getByRole("button", { name: "Consultar CA" }).click();
+  await expect(page.getByRole("status")).toContainText(exportedOn.split("-").reverse().join("/"));
+  await expect(page.getByLabel("Nome do item")).toHaveValue(entry.name);
+  await expect(page.getByLabel("Validade do CA")).toHaveValue(entry.expires);
+  await page.getByLabel("CA", { exact: true }).fill("7536");
+  await page.getByRole("button", { name: "Consultar CA" }).click();
+  const options = page.getByRole("button", { name: "Usar estes dados" });
+  await expect(options).toHaveCount(2);
+  await expect(page.getByLabel("Validade do CA")).toHaveValue("");
+  await options.first().click();
+  await expect(page.getByLabel("Validade do CA")).not.toHaveValue("");
+  expect((await page.request.get("/api/ca-catalogo?empresa=lynx&ca=13")).status()).toBe(403);
+});
+
+test("Equipe filtra pendências e diferencia validades e configuração de itens esperados", async ({ page }) => {
+  const companyId = "tsa";
+  const unit = await db.unit.create({ data: { companyId, name: `Unidade sem regras ${scenario.tag}` } });
+  const email = `painel-equipe-${scenario.tag}@example.test`;
+  await db.user.create({ data: { email, passwordHash: scenario.manager.passwordHash, scopes: { create: {
+    companyId, name: "Gestor do painel de teste", role: "MANAGER", allUnits: false,
+    units: { create: [{ unitId: scenario.unit.id }, { unitId: unit.id }] },
+  } } } });
+  const person = await db.employee.create({ data: {
+    companyId, unitId: scenario.unit.id, supervisorId: scenario.worker.supervisorId,
+    name: `Pessoa com recebimento ${scenario.tag}`, registration: `F-${scenario.tag}`,
+    department: `Setor filtrado ${scenario.tag}`, jobTitle: "Função sem regra aplicável",
+  } });
+  const other = await db.employee.create({ data: {
+    companyId, unitId: unit.id, name: `Pessoa sem configuração ${scenario.tag}`,
+    registration: `N-${scenario.tag}`, department: "Operação", jobTitle: "Técnica",
+  } });
+  await db.expectedItem.upsert({
+    where: { companyId_id: { companyId, id: `painel-${scenario.tag}` } },
+    create: { companyId, id: `painel-${scenario.tag}`, unitId: person.unitId, jobTitle: "OUTRA FUNÇÃO",
+      equipmentId: scenario.uniform.item.id, quantity: 1 }, update: {},
+  });
+  const item = await db.equipment.create({ data: {
+    companyId, name: `Protetor de teste ${scenario.tag}`, makerModel: "Modelo de teste", notes: "",
+    category: "EPI", certificate: "12345", caExpiresAt: new Date("2030-01-01"),
+  } });
+  const lot = await db.equipmentLot.create({ data: { companyId, equipmentId: item.id, code: "EQUIPE", expiresAt: new Date("2025-02-25") } });
+  const balance = { companyId, warehouseId: scenario.warehouse.id, lotId: lot.id };
+  await db.stock.create({ data: balance });
+  await db.delivery.createMany({ data: ["2025-02-20", "2025-02-21"].map((date) => ({
+    ...balance, id: randomUUID(), employeeId: person.id, equipmentId: item.id, actorId: scenario.operator.id, quantity: 1, deliveredAt: new Date(date),
+  })) });
+  await db.equipmentRequest.create({ data: {
+    companyId, id: randomUUID(), employeeId: person.id, unitId: person.unitId, equipmentId: item.id,
+    quantity: 1, reason: "Pedido para teste de equipe.", status: "WAITING_DELIVERY",
+  } });
+
+  await signIn(page, { email, password: scenario.manager.password });
+  await page.setViewportSize({ width: 360, height: 800 });
+  await page.goto("/tsa/colaboradores");
+  const filters = page.getByRole("form", { name: "Filtros da equipe" });
+  await expect(page.locator(".team-member[open]")).toHaveCount(0);
+  await expect(filters.getByRole("combobox", { name: "Unidade" })).toHaveCount(0);
+  await filters.locator(".team-extra-filters > summary").click();
+  await expect(filters.getByRole("combobox", { name: "Unidade" }).locator(`option[value="${scenario.outsideUnit.id}"]`)).toHaveCount(0);
+  await filters.getByRole("combobox", { name: "Unidade" }).selectOption(person.unitId);
+  await filters.getByRole("combobox", { name: "Setor" }).selectOption(person.department);
+  await filters.getByRole("combobox", { name: "Responsável da Gerência" }).selectOption(person.supervisorId!);
+  await filters.getByRole("combobox", { name: "Pendências" }).selectOption("confirmacao");
+  await filters.getByRole("button", { name: "Filtrar" }).click();
+  const card = page.locator(".team-member");
+  await expect(card).toHaveCount(1);
+  await expect(card.locator(":scope > summary")).toContainText(person.registration);
+  await expect(card.locator(":scope > summary")).toContainText(person.jobTitle);
+  await expect(page.getByRole("region", { name: "Resumo da equipe" })).toContainText("Recebimentos pendentes");
+  await card.locator(":scope > summary").click();
+  const waiting = card.getByRole("tab", { name: "A confirmar" });
+  await expect(waiting).toHaveAttribute("aria-selected", "true");
+  const table = card.getByRole("table", { name: "Recebimentos a confirmar" });
+  await expect(table.getByRole("columnheader", { name: "Validade do equipamento" })).toHaveCount(1);
+  await expect(table.getByRole("columnheader", { name: "Validade do CA" })).toHaveCount(1);
+  await expect(table).toContainText("25/02/2025");
+  await expect(table).toContainText("01/01/2030");
+  await expect(table).toContainText("Vencida");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(360);
+  await waiting.focus();
+  await page.keyboard.press("End");
+  await expect(card.getByRole("tabpanel", { name: "Itens esperados" })).toContainText("Nenhum item esperado para esta função pelas regras cadastradas.");
+  await card.getByRole("tab", { name: "Pedidos em aberto" }).click();
+  await expect(card.getByRole("tabpanel", { name: "Pedidos em aberto" })).toContainText(item.name);
+  const results = await new AxeBuilder({ page }).include(".team-member").withTags(["wcag2a", "wcag2aa", "wcag21aa"]).analyze();
+  expect(results.violations).toEqual([]);
+
+  await page.goto("/tsa/colaboradores?pendencia=sem-configuracao");
+  await expect(card).toHaveCount(1);
+  await expect(card.locator(":scope > summary")).toContainText(other.name);
+  await card.locator(":scope > summary").click();
+  await expect(card.getByRole("tabpanel", { name: "Itens esperados" })).toContainText("Itens esperados ainda não configurados para esta unidade.");
+  await expect(card.getByLabel(`Ações de ${other.name}`)).toHaveText("⋯");
+
+  await page.goto("/tsa/epis");
+  const itemRow = page.getByRole("row").filter({ hasText: item.name });
+  await expect(itemRow.getByRole("cell", { name: "12345", exact: true })).toHaveCSS("white-space", "nowrap");
+  await expect(itemRow.getByRole("cell", { name: "01/01/2030", exact: true })).toHaveCSS("white-space", "nowrap");
+  const uniformRow = page.getByRole("row").filter({ hasText: scenario.uniform.item.name });
+  await expect(uniformRow.getByRole("cell", { name: "Uniforme", exact: true })).toHaveCSS("white-space", "nowrap");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(360);
 });

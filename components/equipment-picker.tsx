@@ -3,7 +3,7 @@
 import { useId, useState } from "react";
 import { ItemCategoryFields } from "@/components/item-category-fields";
 
-export function EquipmentPicker({ items }: { items: { id: string; name: string }[] }) {
+export function EquipmentPicker({ companyId, items }: { companyId: string; items: { id: string; name: string }[] }) {
   const [create, setCreate] = useState(false);
   const itemId = useId();
   const newItem = create || items.length === 0;
@@ -13,9 +13,7 @@ export function EquipmentPicker({ items }: { items: { id: string; name: string }
       <fieldset className="inline-item-fields">
         <legend>Novo item</legend>
         <div className="form-grid">
-          <ItemCategoryFields initial="EPI" />
-          <label className="field">Nome do item<input name="name" maxLength={120} required /></label>
-          <label className="field">Fabricante e modelo<input name="makerModel" maxLength={120} required /></label>
+          <ItemCategoryFields companyId={companyId} initial="EPI" />
         </div>
       </fieldset>
     </> : <div className="field">

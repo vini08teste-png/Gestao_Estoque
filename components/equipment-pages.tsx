@@ -29,6 +29,8 @@ function Heading({ title, note, action }: { title: string; note?: string; action
   return <header className="page-heading"><div><h1>{title}</h1>{note && <p>{note}</p>}</div>{action}</header>;
 }
 
+const compactColumns = new Set(["Tipo", "CA", "Validade do CA", "Quantidade", "Data", "Data da entrega", "Registrado em", "Saldo", "Disponível", "Indisponível"]);
+
 function Records({ columns, rows, cardsOnMobile = false }: { columns: string[]; rows: [string, ...ReactNode[]][]; cardsOnMobile?: boolean }) {
   return <section className="panel">
     {rows.length ? <div className={`table-scroll${cardsOnMobile ? " records-mobile-cards" : ""}`} role="region" aria-label="Resultados" tabIndex={0}>
@@ -38,7 +40,7 @@ function Records({ columns, rows, cardsOnMobile = false }: { columns: string[]; 
         </tr></thead>
         <tbody role={cardsOnMobile ? "rowgroup" : undefined}>{rows.map(([id, ...cells]) =>
           <tr key={id} role={cardsOnMobile ? "row" : undefined}>{cells.map((cell, index) =>
-            <td key={index} role={cardsOnMobile ? "cell" : undefined}>
+            <td key={index} className={compactColumns.has(columns[index]) ? "table-value" : undefined} role={cardsOnMobile ? "cell" : undefined}>
               {cardsOnMobile ? <><span className="records-mobile-label" aria-hidden="true">{columns[index]}</span><div>{cell}</div></> : cell}
             </td>)}</tr>)}</tbody>
       </table>
@@ -124,15 +126,14 @@ export async function Catalog({ scope, edit }: { scope: AccessScope; edit: strin
     {edit ? <Editor title={item ? "Editar item" : "Novo item"}>
       <ActionForm key={edit} action={saveEquipment.bind(null, companyId, item?.id ?? null)} continueLabel="Salvar e continuar" reset={!item}>
         <div className="form-grid">
-          {textField("Nome do item", "name", item?.name)}
-          {textField("Fabricante e modelo", "makerModel", item?.makerModel)}
-          <ItemCategoryFields initial={item?.category ?? "EPI"} certificate={item?.certificate ?? undefined}
+          <ItemCategoryFields companyId={companyId} initial={item?.category ?? "EPI"} name={item?.name} makerModel={item?.makerModel}
+            certificate={item?.certificate ?? undefined}
             expires={item?.caExpiresAt ? inputDay(item.caExpiresAt) : undefined} />
         </div>
         <label className="field">Observações<textarea name="notes" rows={2} maxLength={500} defaultValue={item?.notes} /></label>
         <label className="check"><input type="checkbox" name="active" defaultChecked={item?.active ?? true} /> Item ativo</label>
       </ActionForm>
-    </Editor> : <Records columns={["Item", "Tipo", "Fabricante e modelo", "CA", "Validade do CA", "Situação", ...(admin ? ["Ação"] : [])]}
+    </Editor> : <Records cardsOnMobile columns={["Item", "Tipo", "Fabricante e modelo", "CA", "Validade do CA", "Situação", ...(admin ? ["Ação"] : [])]}
       rows={items.map((row) => [row.id, row.name, row.category === "UNIFORM" ? "Uniforme" : "EPI", row.makerModel, row.certificate ?? "—",
         row.caExpiresAt ? formatDay(row.caExpiresAt) : "—", row.active ? "Ativo" : "Inativo",
         ...(admin ? [<Link className="text-action" href={`${root}?edit=${row.id}`}>Editar</Link>] : [])])} />}
@@ -187,7 +188,7 @@ export async function Inventory({ scope, operation, warehouseId = "", registered
         <Choose label="Almoxarifado" name="warehouse"
           selected={warehouses.some(({ id }) => id === warehouseId) ? warehouseId : warehouses.length === 1 ? warehouses[0].id : ""}
           values={warehouses.map((row) => ({ id: row.id, name: `${row.name} · ${row.unit.name}` }))} />
-        <EquipmentPicker items={items} />
+        <EquipmentPicker companyId={companyId} items={items} />
         <div className="form-grid">
           {quantityField}
           <label className="field">Validade do produto (opcional)<input type="date" name="expiresAt" /></label>
@@ -562,7 +563,7 @@ export async function Deliveries({ scope, create, requestId, registered, paper =
         <ActionForm action={registerDelivery.bind(null, companyId, randomUUID(), requestId || null, paper)}
           label={paper ? "Salvar e continuar" : request ? "Confirmar entrega" : "Salvar"}
           continueLabel={paper || request ? undefined : "Salvar e continuar"} reset={!request}>
-          <DeliveryFields key={employeeId} people={people} warehouses={warehouses} stocks={[...totals.values()]} items={items}
+          <DeliveryFields key={employeeId} companyId={companyId} people={people} warehouses={warehouses} stocks={[...totals.values()]} items={items}
             paper={paper} employeeId={employeeId} today={inputDay(today)} request={request ? {
             name: request.employee.name, equipment: request.equipment!.name, unitId: request.unitId,
             quantity: request.quantity, minDate: inputDay(brazilDay(request.openedAt)),

@@ -14,10 +14,10 @@ Em **Meus pedidos**, o colaborador acompanha o envio, a situação atual, a entr
 | Situação | O que acontece |
 | --- | --- |
 | **Aguardando identificação do item** | Um operador precisa vincular o pedido a um item ativo do cadastro. |
-| **Pendente de aprovação** | Usada somente com o fluxo de aprovação ativado. O encarregado decide os pedidos da sua equipe. |
+| **Pendente de aprovação** | Usada somente com o fluxo de aprovação ativado. A Gerência decide os pedidos da sua equipe. |
 | **Aguardando entrega** | O pedido está na fila para a operação verificar e atender quando houver saldo elegível. |
 | **Concluída** | O operador registrou a entrega. A confirmação do destinatário é acompanhada separadamente. |
-| **Rejeitada** | Se a aprovação estiver ativa, o encarregado pode rejeitar e informar a justificativa. |
+| **Rejeitada** | Se a aprovação estiver ativa, a Gerência pode rejeitar e informar a justificativa. |
 | **Cancelada** | O próprio solicitante ou o administrador cancelou o pedido ainda em aberto. |
 
 ```mermaid
@@ -36,13 +36,17 @@ flowchart LR
 - Depois de enviar, abra **Solicitações → Ver detalhes** para visualizar a foto. O solicitante e os operadores com acesso ao pedido podem abrir a imagem em tamanho original.
 - Use **Mais opções → Retirar de uso** para registrar vencimento, dano/desgaste ou outro motivo. A retirada exige justificativa escrita. O item sai da lista de uso, a entrega continua no histórico e o saldo conserva a baixa original.
 
-O pedido de troca referencia a entrega de origem. O sistema restringe a ação à entrega elegível mais recente e admite um pedido de troca em aberto por entrega. Se o item original estiver inativo, a solicitação de troca entra como item a identificar. A nova entrega percorre o fluxo de baixa e recebimento.
+O pedido de troca referencia a entrega de origem. A troca fica disponível para a entrega elegível mais recente e para unidades restantes de uma entrega parcialmente devolvida. O sistema admite um pedido de troca em aberto por entrega. Se o item original estiver inativo, a solicitação de troca entra como item a identificar. A nova entrega percorre o fluxo de baixa e recebimento.
+
+Em **Solicitações → Atender pedido**, preencha **Data da devolução** depois de receber o item antigo para descarte. O sistema registra a mesma quantidade atendida no pedido e mantém o saldo disponível sem entrada do item usado. A data fica visível no pedido e no Histórico da entrega original. Se a devolução for parcial, as demais unidades continuam com o colaborador.
+
+As trocas concluídas antes deste fluxo preservam seus registros anteriores. Quando uma entrega de substituição é removida e o pedido volta à fila, a devolução já registrada fica disponível para o próximo atendimento.
 
 ## Aprovação guardada para uso futuro
 
 O administrador pode guardar regras por unidade e item em **Regras de aprovação**. Com o fluxo desativado, essas regras ficam sem efeito sobre a fila.
 
-O campo `Company.requestApprovalEnabled` controla o recurso por empresa e inicia como `false`. O formulário de regras guarda a configuração e a ativação é uma configuração técnica do sistema. Quando a aprovação estiver ativa, a regra do item tem prioridade sobre a regra geral da unidade. Na falta de ambas, a aprovação é exigida. Apenas o encarregado do escopo pode aprovar ou rejeitar.
+O campo `Company.requestApprovalEnabled` controla o recurso por empresa e inicia como `false`. O formulário de regras guarda a configuração e a ativação é uma configuração técnica do sistema. Quando a aprovação estiver ativa, a regra do item tem prioridade sobre a regra geral da unidade. Na falta de ambas, a aprovação é exigida. Apenas a Gerência responsável pela equipe pode aprovar ou rejeitar.
 
 A migração que desativou a aprovação encaminhou os pedidos pendentes com item cadastrado para **Aguardando entrega**. Os que ainda precisavam de identificação foram para **Aguardando identificação do item**.
 

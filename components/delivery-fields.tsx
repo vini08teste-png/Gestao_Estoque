@@ -9,7 +9,8 @@ type Warehouse = { id: string; name: string; unitId: string };
 type Item = { id: string; name: string };
 type StockOption = { warehouseId: string; item: Item; quantity: number };
 
-export function DeliveryFields({ people, warehouses, stocks, items, today, request, paper, employeeId }: {
+export function DeliveryFields({ companyId, people, warehouses, stocks, items, today, request, paper, employeeId }: {
+  companyId: string;
   people: Person[];
   warehouses: Warehouse[];
   stocks: StockOption[];
@@ -67,7 +68,7 @@ export function DeliveryFields({ people, warehouses, stocks, items, today, reque
       </select>
       {emptyWarehouse && <small id={warehouseFieldId + "-help"}>Este almoxarifado já está cadastrado. Registre uma entrada para disponibilizar itens.</small>}
     </div>}
-    {paper ? <EquipmentPicker items={items} /> : !request && <div className="field">
+    {paper ? <EquipmentPicker companyId={companyId} items={items} /> : !request && <div className="field">
       <label htmlFor={itemFieldId}>Item</label>
       <select id={itemFieldId} name="equipment" value={itemId} onChange={(event) => setItem(event.target.value)}
         aria-describedby={quantityAvailable === undefined ? undefined : itemFieldId + "-help"} required disabled={!warehouse}>

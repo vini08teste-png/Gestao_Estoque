@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="pt-BR" data-company="lynx">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Relatórios · Prévia de Gestão de EPIs</title>
+  <style>
+    :root { color-scheme: light; font-family: "Segoe UI", system-ui, sans-serif; color: #242735; background: #f4f5f8; --brand: #a51e22; --deep: #76161c; --tint: #faebed; --line: #dfe3ec; --muted: #555f72; }
+    [data-company="lynx"] { --brand: #303d82; --deep: #20295f; --tint: #eceefa; }
+    * { box-sizing: border-box; }
+    body, h1, h2, p, dl, dd { margin: 0; }
+    [hidden] { display: none !important; }
+    :focus-visible { outline: 3px solid var(--brand); outline-offset: 3px; }
+    .top { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; background: #20222b; color: #fff; padding: 12px max(16px, calc((100% - 1360px) / 2)); }
+    .top-brand { display: flex; align-items: center; gap: 12px; }
+    .top-brand img { width: 76px; height: 36px; object-fit: contain; }
+    .theme { display: flex; align-items: center; gap: 8px; font-size: .875rem; }
+    main { max-width: 1410px; padding: 28px 24px 40px; margin: auto; }
+    .heading, .actions, .panel-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+    h1 { font-size: clamp(2rem, 5vw, 2.55rem); line-height: 1.15; letter-spacing: -.04em; }
+    h2 { font-size: 1.2rem; line-height: 1.25; }
+    .heading p { margin-top: 5px; color: var(--muted); }
+    .actions { justify-content: flex-start; gap: 8px; }
+    .notice { padding: 9px 12px; margin: 18px 0; color: var(--deep); background: var(--tint); border-radius: 8px; font-size: .875rem; }
+    form { display: flex; align-items: end; flex-wrap: wrap; gap: 12px; margin-bottom: 16px; }
+    label { display: grid; gap: 4px; font-weight: 650; font-size: .875rem; min-width: 0; }
+    select, input, button { min-height: 40px; padding: 8px 11px; border: 1px solid #d5dbe7; border-radius: 8px; background: #fff; color: #242735; font: inherit; font-size: .875rem; max-width: 100%; }
+    select, button { cursor: pointer; }
+    button { font-weight: 650; }
+    button:hover { background: #f2f4f8; }
+    button:disabled { opacity: .6; cursor: default; }
+    .primary { color: #fff; background: var(--brand); border-color: var(--brand); }
+    .primary:hover:not(:disabled) { background: var(--deep); }
+    .primary:disabled { background: var(--brand); }
+    .panel { background: white; border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 2px 5px #19234006; }
+    .panel-heading { padding: 14px 16px; }
+    .panel-heading p, .guidance, .print-help { color: var(--muted); font-size: .875rem; }
+    .guidance { margin: 0 0 12px; }
+    .mobile-note { display: none; }
+    .scroll { overflow-x: auto; border-radius: 0 0 12px 12px; }
+    .scroll:focus-visible { outline-offset: -3px; }
+    table { width: 100%; border-collapse: collapse; font-size: .875rem; text-align: left; }
+    th, td { padding: 11px 10px; vertical-align: top; }
+    th { background: #f3f5f9; color: #424e64; font-weight: 650; white-space: nowrap; }
+    tbody tr + tr { border-top: 1px solid var(--line); }
+    tbody tr:nth-child(even) { background: #fafbfd; }
+    .person { min-width: 150px; }
+    .person small { display: block; margin-top: 2px; color: var(--muted); }
+    .number, .nowrap, time { white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .number { text-align: center; }
+    .specification { min-width: 180px; }
+    .location { min-width: 105px; }
+    .compact-title span { display: block; }
+    .empty { padding: 22px 16px; color: var(--muted); }
+    .sheet { padding: 20px; }
+    .sheet-header { display: flex; align-items: center; gap: 15px; padding-bottom: 14px; border-bottom: 2px solid var(--brand); }
+    .sheet-header img { width: 85px; height: 45px; object-fit: contain; }
+    .sheet-header p { margin-top: 4px; color: var(--muted); }
+    .sheet-data { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px 16px; padding: 14px 0; }
+    .sheet-data dt { color: var(--muted); font-size: .8125rem; }
+    .sheet-data dd { font-weight: 650; overflow-wrap: break-word; }
+    .sheet-table th, .sheet-table td { border: 1px solid var(--line); }
+    .sheet-table .rubrica { min-width: 96px; }
+    .print-help { margin-top: 12px; }
+    @media (max-width: 600px) {
+      main { padding: 20px 14px 28px; }
+      form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+      form > label:has(select), form > button { grid-column: 1 / -1; }
+      form :is(input, select) { width: 100%; min-width: 0; }
+      .sheet { padding: 14px; }
+      .sheet-data { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .mobile-note:has(+ .scroll:not([hidden])) { display: block; padding: 0 14px 8px; color: var(--muted); font-size: .8125rem; }
+      .sheet .mobile-note { padding-inline: 0; }
+    }
+    @page { size: A4 landscape; margin: 12mm; }
+    @media print {
+      :root { background: #fff; color: #111; }
+      .top, .heading, .notice, form, .guidance, #report-view, #sheet-empty, .print-help, .mobile-note { display: none !important; }
+      main { max-width: none; padding: 0; }
+      .sheet { border: 0; border-radius: 0; box-shadow: none; padding: 0; }
+      .sheet .scroll { overflow: visible; }
+      .sheet-header { border-color: #333; }
+      .sheet-data { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      .sheet-table { table-layout: fixed; font-size: 9pt; }
+      .sheet-table thead { display: table-header-group; }
+      .sheet-table tr { break-inside: avoid; }
+      .sheet-table th, .sheet-table td { border-color: #777; padding: 6px 5px; }
+      .sheet-table th { color: #111; white-space: normal; }
+      .sheet-table .specification { width: 21%; overflow-wrap: break-word; }
+      .sheet-table .number { width: 6%; }
+      .sheet-table .measure, .sheet-table .certificate { width: 7%; }
+      .sheet-table .rubrica { width: 11%; height: 11mm; }
+    }
+  </style>
+</head>
+<body>
+  <header class="top">
+    <div class="top-brand"><img id="brand-logo" alt="" width="76" height="36"><strong>Gestão de EPIs</strong></div>
+    <label class="theme">Tema
+      <select id="company"><option value="lynx">TSA Lynx</option><option value="tsa">TSA</option></select>
+    </label>
+  </header>
+  <main>
+    <header class="heading">
+      <div><h1>Relatórios</h1><p id="company-name">TSA Lynx</p></div>
+      <div class="actions">
+        <button type="button" class="primary" id="csv">Exportar CSV</button>
+        <button type="button" id="print" hidden>Imprimir ficha</button>
+        <button type="button" class="primary" id="pdf" hidden>Salvar em PDF</button>
+      </div>
+    </header>
+    <p class="notice">Página de teste com dados fictícios.</p>
+    <form id="filters">
+      <label>Relatório
+        <select id="report" name="tipo">
+          <option value="deliveries">Entregas</option>
+          <option value="pending">Pendências</option>
+          <option value="deadlines">Vencimentos</option>
+          <option value="sheet">Ficha individual de EPI</option>
+        </select>
+      </label>
+      <label>Unidade<select name="unidade" id="unit"></select></label>
+      <label>Data inicial<input name="inicio" type="date"></label>
+      <label>Data final<input name="fim" type="date"></label>
+      <label id="employee-field" hidden>Colaborador<select id="employee" name="colaborador" disabled></select></label>
+      <button id="apply" type="submit">Aplicar filtros</button>
+    </form>
+    <p class="guidance" id="range-error" role="alert" hidden>A data inicial deve ser anterior ou igual à data final.</p>
+    <p class="guidance" id="hint" hidden></p>
+
+    <section id="report-view" class="panel" aria-labelledby="report-heading">
+      <header class="panel-heading"><h2 id="report-heading"></h2><p id="count" role="status"></p></header>
+      <p class="mobile-note">Deslize a tabela para ver as demais colunas.</p>
+      <div class="scroll" id="report-scroll" role="region" aria-label="Tabela de relatórios" tabindex="0">
+        <table id="report-table"></table>
+      </div>
+      <p class="empty" id="report-empty" hidden>Nenhum registro para estes filtros.</p>
+    </section>
+
+    <section id="sheet-empty" class="panel" hidden><p class="empty" id="sheet-message"></p></section>
+    <section id="sheet" class="panel sheet" aria-labelledby="sheet-title" hidden>
+      <header class="sheet-header">
+        <img id="sheet-logo" alt="" width="85" height="45">
+        <div><h2 id="sheet-title">Ficha individual de controle de EPIs</h2><p id="sheet-company"></p></div>
+      </header>
+      <dl class="sheet-data" id="sheet-data"></dl>
+      <p class="mobile-note">Deslize a tabela para ver as demais colunas.</p>
+      <div id="sheet-scroll" class="scroll" role="region" aria-label="Registros da ficha individual" tabindex="0">
+        <table class="sheet-table" id="sheet-table"></table>
+      </div>
+      <p class="empty" id="sheet-no-records" hidden>Nenhum EPI registrado no período selecionado.</p>
+      <p class="print-help">Na janela de impressão, selecione <strong>Salvar como PDF</strong> para exportar.</p>
+    </section>
+  </main>
+  <script src="relatorios.js" defer></script>
+</body>
+</html>

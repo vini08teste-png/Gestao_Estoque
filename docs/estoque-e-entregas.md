@@ -8,6 +8,8 @@
 
 Se o item ainda não existir no catálogo, use **Cadastrar novo item** no próprio formulário. Ao salvar, o sistema cadastra o item e registra a entrada juntos.
 
+Para consultar um EPI, digite o número em **CA** e clique em **Consultar CA**. A base importada sugere nome, fabricante ou importador, referência e validade. Confira os campos antes de salvar. Se houver mais de uma opção, selecione a que corresponde ao equipamento. A tela indica a data da exportação consultada.
+
 O almoxarifado aparece na lista assim que é cadastrado. A seção **Saldo por item** mostra as quantidades disponíveis e indisponíveis por local. O administrador pode editar ou inativar itens. A inativação preserva os registros anteriores.
 
 ## Entender a disponibilidade

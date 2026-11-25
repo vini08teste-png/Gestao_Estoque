@@ -1,14 +1,15 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import type { ReactNode } from "react";
 import { saveAlertDays } from "@/app/organization-actions";
 import { ActionForm } from "@/components/action-form";
 import { Brand } from "@/components/brand";
-import { PrintReportActions, ReportTypeSelect } from "@/components/report-controls";
 import { Icon } from "@/components/icon";
+import { PrintReportActions, ReportTypeSelect } from "@/components/report-controls";
 import { canAdminister, type AccessScope } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { employeesWhere } from "@/lib/directory";
-import { deliveriesAwaitingReceipt, hasPersonalEquipment } from "@/lib/equipment-access";
+import { deliveriesAwaitingReceipt, handlesStock, hasPersonalEquipment } from "@/lib/equipment-access";
 import { formatDay, inputDay, plusDays, requestLabels, todayInBrazil } from "@/lib/equipment";
 import { isCompany, roles } from "@/lib/organization";
 import { defaultStockMinimum, stockAlerts, stockDemand } from "@/lib/stock-availability";
@@ -40,6 +41,27 @@ function AlertCards({ rows, root, selectedUnit }: {
   </div>;
 }
 
+type StockShortages = Awaited<ReturnType<typeof stockAlerts>>;
+
+function StockShortageSummary({ rows }: { rows: StockShortages }) {
+  const empty = rows.filter(([, row]) => row.quantity === 0).length;
+  const low = rows.length - empty;
+  return <div className="stock-shortage-counts">
+    {empty > 0 && <span className="badge deadline-danger">{empty} {empty === 1 ? "item zerado" : "itens zerados"}</span>}
+    {low > 0 && <span className="badge deadline-warning">{low} com saldo baixo</span>}
+  </div>;
+}
+
+function StockPriority({ rows, href }: { rows: StockShortages; href: string }) {
+  if (!rows.length) return null;
+  return <section className={`panel stock-priority${rows.some(([, row]) => row.quantity === 0) ? " stock-priority-zero" : ""}`}
+    aria-labelledby="stock-priority-heading">
+    <Icon name="inventory_2" />
+    <div><h2 id="stock-priority-heading">Estoque baixo ou zerado</h2><StockShortageSummary rows={rows} /></div>
+    <Link className="button" href={href} aria-label="Ver itens com estoque baixo ou zerado">Ver itens</Link>
+  </section>;
+}
+
 export async function Dashboard({ scope }: { scope: AccessScope }) {
   const personal = scope.role === "EMPLOYEE";
   const base = `/${scope.companyId}`;
@@ -48,7 +70,7 @@ export async function Dashboard({ scope }: { scope: AccessScope }) {
   const openRequests = { ...unitRequestWhere(scope, "", personal), status: { in: [...openRequestStatuses()] } };
   const unconfirmed = { AND: [deliveryScope, { ...deliveriesAwaitingReceipt, retirement: null }] };
   const deliveryFields = {
-    id: true, quantity: true, deliveredAt: true, warehouseId: true, receipt: { select: { deliveryId: true } },
+    id: true, quantity: true, returnedQuantity: true, deliveredAt: true, warehouseId: true, receipt: { select: { deliveryId: true } },
     employee: { select: { name: true } }, equipment: { select: { name: true } },
   } as const;
   const [deadlines, shortages, demand, requests, receipts, deliveries, employees, latest, pendingRequests, pendingReceipts] = await Promise.all([
@@ -82,7 +104,6 @@ export async function Dashboard({ scope }: { scope: AccessScope }) {
   });
   const team = scope.role === "SUPERVISOR" || scope.role === "MANAGER";
   const approval = scope.company.requestApprovalEnabled;
-  const stockCard = ["Itens com estoque baixo ou zerado", shortages.length, `${base}/alertas?tipo=estoque`, "inventory_2"] as const;
   const demandCard = ["Itens com falta para pedidos", demand.filter(({ missing }) => missing > 0).length,
     `${base}/alertas?tipo=demanda`, "list_alt"] as const;
   const receiptPath = personal ? `${base}/meus-epis#itens-a-confirmar` :
@@ -93,17 +114,14 @@ export async function Dashboard({ scope }: { scope: AccessScope }) {
   ] as const : scope.role === "SUPERVISOR" ? [
     ...(approval ? [["Pedidos aguardando sua decisão", count("PENDING_APPROVAL"), `${base}/solicitacoes?status=PENDING_APPROVAL`, "rule"] as const] : []),
     ["Pedidos aguardando entrega", count("WAITING_DELIVERY"), `${base}/solicitacoes?status=WAITING_DELIVERY`, "receipt_long"],
-    stockCard,
     ["Recebimentos a confirmar", receipts, receiptPath, "inventory_2"],
   ] as const : scope.role === "WAREHOUSE" ? [
     ["Pedidos aguardando entrega", count("WAITING_DELIVERY"), `${base}/solicitacoes?status=WAITING_DELIVERY`, "receipt_long"],
-    stockCard,
     ["Itens a identificar", count("WAITING_CATALOG"), `${base}/solicitacoes?status=WAITING_CATALOG`, "category"],
     ["Entregas em 30 dias", deliveries, reportLink("entregas"), "history"],
   ] as const : [
     ["Recebimentos a confirmar", receipts, receiptPath, "inventory_2"],
     ["Solicitações em aberto", pending, `${base}/solicitacoes?status=aberto`, "receipt_long"],
-    stockCard,
     ["Colaboradores ativos", employees, `${base}/colaboradores?status=ativo`, "groups"],
     ["Entregas em 30 dias", deliveries, reportLink("entregas"), "history"],
   ] as const;
@@ -122,6 +140,7 @@ export async function Dashboard({ scope }: { scope: AccessScope }) {
     <section className="hero">
       <h1>Visão geral</h1><p>{scope.company.name} · <strong>{roles[scope.role]}</strong></p>
     </section>
+    {!personal && <StockPriority rows={shortages} href={`${base}/alertas?tipo=estoque`} />}
     <section aria-labelledby="dashboard-summary">
       <div className="section-row">
         <h2 id="dashboard-summary">{personal ? "Meu resumo" : "Resumo da operação"}</h2>
@@ -161,7 +180,8 @@ export async function Dashboard({ scope }: { scope: AccessScope }) {
             {latest.map((row) => <li key={row.id}>
               <div>
                 <span><strong>{row.equipment.name}</strong><small>{detail(row.employee.name, row.quantity)} · {formatDay(row.deliveredAt)}</small></span>
-                <span className={`badge ${!row.warehouseId ? "" : row.receipt ? "active" : "deadline-warning"}`}>{!row.warehouseId ? "Entrega anterior" : row.receipt ? "Confirmado" : "Aguardando confirmação"}</span>
+                {row.returnedQuantity === row.quantity ? <span className="badge">Devolvido para descarte</span> :
+                  <span className={`badge ${!row.warehouseId ? "" : row.receipt ? "active" : "deadline-warning"}`}>{!row.warehouseId ? "Entrega anterior" : row.receipt ? "Confirmado" : "Aguardando confirmação"}</span>}
               </div>
             </li>)}
           </ul> : <p className="empty">Nenhuma entrega registrada.</p>}
@@ -192,92 +212,127 @@ export async function Dashboard({ scope }: { scope: AccessScope }) {
   </>;
 }
 
+const alertCategories = {
+  todos: "Todos os alertas",
+  estoque: "Estoque baixo ou zerado",
+  demanda: "Saldo para pedidos",
+  ...alertLabels,
+};
+
+type AlertCategory = keyof typeof alertCategories;
+type AlertRecord = {
+  id: string;
+  equipment: string;
+  unit: string;
+  status: string;
+  tone: string;
+  detail: ReactNode;
+  action?: { href: string; label: string };
+};
+
 export async function Alerts({ scope, query }: { scope: AccessScope; query: Query }) {
   if (!canViewReports(scope)) notFound();
-  const root = `/${scope.companyId}/alertas`;
+  const base = `/${scope.companyId}`;
+  const root = `${base}/alertas`;
   const units = await reportingUnits(scope);
   const { unit, error } = reportFilters({ unidade: query.unidade }, units);
-  const kind = alertKind(query);
-  const stockOnly = query.tipo === "estoque";
-  const demandOnly = query.tipo === "demanda";
-  const operationsOnly = stockOnly || demandOnly;
-  const today = todayInBrazil();
+  const category = query.tipo === "estoque" || query.tipo === "demanda" ? query.tipo : alertKind(query) ?? "todos";
   const thresholds = scope.company.alertDays;
-  const [rows, shortages, demand] = await Promise.all([
-    error || operationsOnly ? [] : listDeadlines(scope, { unit }),
-    error || kind || demandOnly ? [] : stockAlerts(scope, unit),
-    error || kind || stockOnly ? [] : stockDemand(scope, unit),
+  const today = todayInBrazil();
+  const [deadlines, shortages, demand] = await Promise.all([
+    error ? [] : listDeadlines(scope, { unit }),
+    error ? [] : stockAlerts(scope, unit),
+    error ? [] : stockDemand(scope, unit),
   ]);
-  const types = (operationsOnly ? [] : kind ? [kind] : Object.keys(alertLabels)) as AlertKind[];
+  const categoryLink = (type: AlertCategory) => root + params({ tipo: type === "todos" ? "" : type, unidade: unit });
+  const reportPath = `${base}/relatorios` + params({ tipo: "vencimentos", unidade: unit });
+  const stockAction = handlesStock(scope) ? { href: `${base}/estoque`, label: "Consultar estoque" } : undefined;
+  const orderAction = { href: `${base}/solicitacoes?fila=falta-estoque`, label: "Ver pedidos com falta de estoque" };
+  const records: Record<Exclude<AlertCategory, "todos">, AlertRecord[]> = {
+    estoque: shortages.map(([id, row]) => ({
+      id: `estoque-${id}`, ...row,
+      status: row.quantity === 0 ? "Estoque zerado" : "Estoque baixo",
+      tone: row.quantity === 0 ? "danger" : "warning",
+      detail: <><span className="table-value">{row.quantity} / {row.minimum} un.</span>
+        <progress className="alert-stock-level" value={row.quantity} max={Math.max(row.minimum, 1)} aria-hidden="true" />
+      </>,
+      action: stockAction,
+    })),
+    demanda: demand.filter(({ missing }) => missing > 0).map((row) => ({
+      ...row, id: `demanda-${row.id}`,
+      status: `Faltam ${row.missing} un.`, tone: "danger",
+      detail: `${row.requested} pedidas · ${row.available} disponíveis`, action: orderAction,
+    })),
+    ca: [],
+    lote: [],
+  };
+  for (const row of deadlines) {
+    const { label, tone } = deadlineStatus(row, today, thresholds);
+    records[row.kind].push({
+      ...row, id: `${row.kind}-${row.id}`, status: label, tone,
+      detail: <><time dateTime={inputDay(row.due)}>{formatDay(row.due)}</time>
+        <small>{row.kind === "ca" ? `CA ${row.reference}` : `Validade do produto · ${row.reference}`}</small></>,
+      action: { href: reportPath, label: "Ver vencimentos" },
+    });
+  }
+  const all = [...records.estoque, ...records.demanda, ...records.ca, ...records.lote];
+  const visible = category === "todos" ? all : records[category];
+  const counts = { todos: all, ...records };
+  const columns = ["Situação", "Equipamento", "Unidade", category === "estoque" ? "Saldo / mínimo" : "Saldo / prazo", "Ação"];
+  const stockTone = records.estoque.some(({ tone }) => tone === "danger") ? "danger" : "warning";
+  const descriptions = {
+    todos: "Registros identificados",
+    estoque: records.estoque.length ? "Requer atenção" : "Nenhum saldo crítico",
+    demanda: "Itens com saldo insuficiente",
+    ca: "Na janela consultada",
+    lote: "Na janela consultada",
+  };
   return <>
-    <header className="page-heading"><div><h1>{demandOnly ? "Demanda e estoque" : stockOnly ? "Alertas de estoque" : "Alertas"}</h1>
-      <p>{demandOnly ? "Veja quanto estoque falta para atender os pedidos da fila." :
-        stockOnly ? "Consulte os itens com saldo baixo ou zerado na sua unidade." : `${scope.company.name} · Estoque e validades`}</p></div>
-      {!operationsOnly && <Link className="button" href={`/${scope.companyId}/relatorios` + params({ tipo: "vencimentos", unidade: unit })}>Relatório de vencimentos</Link>}
+    <header className="page-heading"><div><h1>Alertas</h1>
+      <p>{scope.company.name} · Estoque e validades</p></div>
+      {!error && <Link className="button" href={reportPath}>Relatório de vencimentos</Link>}
     </header>
     <form action={root} className="filters">
-      {(kind || operationsOnly) && <input type="hidden" name="tipo" value={demandOnly ? "demanda" : stockOnly ? "estoque" : kind} />}
+      {category !== "todos" && <input type="hidden" name="tipo" value={category} />}
       <UnitSelect units={units} selected={unit} />
       <button className="button" type="submit">Filtrar</button>
-      {(kind || operationsOnly) && <Link className="button" href={root + params({ unidade: unit })}>Ver todos os alertas</Link>}
     </form>
     {error ? <p className="feedback error" role="alert">{error}</p> : <>
-      {!kind && !stockOnly && <section aria-labelledby="stock-demand-heading">
-        <div className="section-row"><div>
-          <h2 id="stock-demand-heading">Saldo para pedidos em aberto</h2>
-          <p>Compara pedidos aguardando entrega com o saldo elegível por item e unidade.</p>
-        </div><Link className="text-action" href={`/${scope.companyId}/solicitacoes?status=WAITING_DELIVERY`}>Abrir fila de pedidos</Link></div>
-        <div className="panel">
-          {demand.length ? <ul className="dashboard-summary-list">
-            {demand.map((row) => <li key={row.id}><div>
-              <span><strong>{row.equipment}</strong><small>{row.unit} · {row.requested} pedidas · {row.available} disponíveis</small></span>
-              <span className={`badge ${row.missing ? "deadline-danger" : "active"}`}>
-                {row.missing ? `Faltam ${row.missing} un.` : "Saldo total suficiente"}
-              </span>
-            </div></li>)}
-          </ul> : <p className="empty">Nenhum pedido com item identificado aguarda entrega neste escopo.</p>}
-        </div>
-      </section>}
-      {!kind && !demandOnly && <section aria-labelledby="low-stock-heading">
-        <div className="section-row"><div>
-          <h2 id="low-stock-heading">Estoque baixo ou zerado</h2>
-          <p>O alerta usa o mínimo configurado por item e unidade. Para os demais itens, o limite padrão é de {defaultStockMinimum} unidades.</p>
-        </div><Link className="text-action" href={`/${scope.companyId}/estoque`}>Consultar estoque</Link></div>
-        <div className="panel">
-          {shortages.length ? <ul className="dashboard-summary-list">
-            {shortages.map(([id, row]) => <li key={id}><div>
-              <span><strong>{row.equipment}</strong><small>{row.unit} · Mínimo {row.minimum} un.</small></span>
-              <span className={`badge ${row.quantity ? "deadline-warning" : "deadline-danger"}`}>
-                {row.quantity ? `Saldo baixo · ${row.quantity} un.` : "Sem saldo disponível"}
-              </span>
-            </div></li>)}
-          </ul> : <p className="empty">Nenhum item com saldo baixo ou zerado no estoque cadastrado.</p>}
-        </div>
-      </section>}
-      {!operationsOnly && <><h2 className="section-title">Alertas de validade</h2><AlertCards rows={rows} root={root} selectedUnit={unit} /></>}
-      {types.map((type) => {
-        const list = rows.filter((row) => row.kind === type);
-        return <section key={type} className="deadline-section" aria-label={alertLabels[type]}>
-          <h2 className="section-title">{alertLabels[type]}</h2>
-          <div className="panel">
-            {list.length === 0 ? <p className="empty">Nenhum prazo nesta janela.</p> :
-              <div className="table-scroll" role="region" aria-label={alertLabels[type]} tabIndex={0}>
-                <table>
-                  <thead><tr>{["Item", type === "ca" ? "CA" : "Almoxarifado",
-                    ...(type === "ca" ? [] : ["Unidade"]), "Prazo", "Situação"].map((label) => <th scope="col" key={label}>{label}</th>)}</tr></thead>
-                  <tbody>{list.map((row) => {
-                    const status = deadlineStatus(row, today, thresholds);
-                    return <tr key={row.id}><td>{row.equipment}</td><td>{row.reference}</td>
-                      {type !== "ca" && <td>{row.unit}</td>}<td>{formatDay(row.due)}</td>
-                      <td><span className={`badge deadline-${status.tone || "normal"}`}>{status.label}</span></td></tr>;
-                  })}</tbody>
-                </table>
-              </div>}
-          </div>
-        </section>;
-      })}
+      <nav className="alert-categories" aria-label="Categorias de alertas">
+        {(Object.keys(alertCategories) as AlertCategory[]).map((type) =>
+          <Link className={`stat alert-category${type === "estoque" && shortages.length ? ` alert-category-${stockTone}` : ""}`}
+            href={categoryLink(type)} aria-current={type === category ? "page" : undefined} prefetch={false} scroll={false} key={type}>
+            <span>{alertCategories[type]}</span>
+            <strong className="metric-value">{counts[type].length}</strong>
+            <small>{descriptions[type]}</small>
+          </Link>)}
+      </nav>
+      <section className="panel alert-results" aria-labelledby="identified-alerts">
+        <header className="panel-heading"><h2 id="identified-alerts">Alertas identificados</h2>
+          <small>{visible.length} {visible.length === 1 ? "registro" : "registros"}</small>
+        </header>
+        {visible.length ? <div className="table-scroll records-mobile-cards" role="region" aria-label="Lista de alertas" tabIndex={0}>
+          <table role="table">
+            <thead role="rowgroup"><tr role="row">{columns.map((label) => <th scope="col" role="columnheader" key={label}>{label}</th>)}</tr></thead>
+            <tbody role="rowgroup">{visible.map((row) => {
+              const cells = [
+                <span className={`badge deadline-${row.tone || "normal"}`}>{row.status}</span>,
+                <strong>{row.equipment}</strong>,
+                row.unit || "—",
+                row.detail,
+                row.action ? <Link href={row.action.href} className="text-action">{row.action.label}</Link> : "—",
+              ];
+              return <tr role="row" key={row.id}>{cells.map((cell, index) => <td role="cell" key={columns[index]}>
+                <span className="records-mobile-label" aria-hidden="true">{columns[index]}</span><div>{cell}</div>
+              </td>)}</tr>;
+            })}</tbody>
+          </table>
+        </div> : <p className="empty">{category === "todos" ? "Nenhum alerta identificado nas unidades consultadas." : "Nenhum alerta identificado nesta categoria."}</p>}
+        <footer>Estoque mínimo padrão de {defaultStockMinimum} unidades, salvo configuração específica. A ausência de alertas de validade, por si só, não comprova regularidade.</footer>
+      </section>
     </>}
-    {!operationsOnly && canAdminister(scope) && <details className="panel editor deadline-settings">
+
+    {canAdminister(scope) && <details className="panel editor deadline-settings">
       <summary>Configurar prazos de alerta</summary>
       <ActionForm action={saveAlertDays.bind(null, scope.companyId)} continueLabel="Salvar e continuar">
         <p>Escolha três prazos em dias, em ordem crescente, para os alertas de validade do CA e do produto.</p>

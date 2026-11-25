@@ -3,7 +3,7 @@ import type { Role } from "@/generated/prisma/enums";
 export const roles: Record<Role, string> = {
   ADMIN: "Administrador",
   MANAGER: "Gestor",
-  SUPERVISOR: "Encarregado",
+  SUPERVISOR: "Gerência",
   WAREHOUSE: "Almoxarifado",
   EMPLOYEE: "Colaborador",
 };

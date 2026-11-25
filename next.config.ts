@@ -3,6 +3,7 @@ import type { NextConfig } from "next";
 const config: NextConfig = {
   ...(process.env.EPI_UX_PREVIEW === "true" && { distDir: ".next-ux-preview" }),
   poweredByHeader: false,
+  outputFileTracingIncludes: { "/api/ca-catalogo": ["./data/ca-catalogo.json.gz"] },
   experimental: { serverActions: { bodySizeLimit: "4mb" } },
   async headers() {
     return [{

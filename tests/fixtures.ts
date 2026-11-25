@@ -41,7 +41,7 @@ export async function seedScenario(db: PrismaClient) {
     data: { companyId, unitId, name: name(label), registration: `${tag}-${label}`, department: "Operação",
       jobTitle: label, supervisorId },
   });
-  const supervisorEmployee = await employee("Encarregado", unit.id);
+  const supervisorEmployee = await employee("Gerência", unit.id);
   const worker = await employee("Colaborador", unit.id, supervisorEmployee.id);
   const outside = await employee("Pessoa restrita", outsideUnit.id);
   const [manager, supervisor, employeeAccount, operator] = await Promise.all([

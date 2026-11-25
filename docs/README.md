@@ -5,7 +5,7 @@ O sistema controla o estoque, as solicitações e as entregas de EPIs e uniforme
 | Documento | Conteúdo |
 | --- | --- |
 | [Visão geral e navegação](visao-geral.md) | Telas, termos usados no sistema e exemplo do cadastro à entrega. |
-| [Acessos, colaboradores e equipes](acessos-e-cadastros.md) | Permissões por perfil, primeiro login e cadastro de encarregados terceirizados. |
+| [Acessos, colaboradores e equipes](acessos-e-cadastros.md) | Permissões por perfil, primeiro login e cadastro de terceirizados com perfil Gerência. |
 | [Itens, estoque e entregas](estoque-e-entregas.md) | Cadastro de itens, lotes, entradas, disponibilidade, baixa e recebimento. |
 | [Solicitações e trocas](solicitacoes-e-trocas.md) | Pedidos normais, itens fora do catálogo, fotos, cancelamento e aprovação futura. |
 | [Alertas e relatórios](alertas-e-relatorios.md) | Regras dos indicadores, vencimentos, filtros, exportação e diferença entre listas. |

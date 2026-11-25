@@ -29,19 +29,19 @@ Para validar os tipos e compilar, execute `npm.cmd run typecheck` e `npm.cmd run
 | --- | --- |
 | Administrador | Edita a empresa selecionada e administra unidades, colaboradores e acessos. |
 | Gestor | Cadastra colaboradores e opera almoxarifados nas unidades autorizadas. |
-| Encarregado | Cadastra colaboradores na própria equipe, atende pedidos no seu escopo e opera o estoque da unidade. |
+| Gerência | Cadastra colaboradores na própria equipe, atende pedidos no seu escopo e opera o estoque da unidade. |
 | Almoxarifado | Opera estoque e entregas nas unidades autorizadas. |
 | Colaborador | Consulta o próprio cadastro e a unidade vinculada. |
 
-Para conceder acesso à segunda empresa a uma conta existente, crie seu vínculo usando o mesmo e-mail e deixe a senha inicial em branco. Os perfis e escopos de cada empresa são independentes. O cadastro do colaborador precisa existir antes de vincular um usuário como Colaborador ou Encarregado. Ao criar a conta, informe a senha inicial ao usuário por um canal privado.
+Para conceder acesso à segunda empresa a uma conta existente, crie seu vínculo usando o mesmo e-mail e deixe a senha inicial em branco. Os perfis e escopos de cada empresa são independentes. O cadastro do colaborador precisa existir antes de vincular um usuário como Colaborador ou Gerência. Ao criar a conta, informe a senha inicial ao usuário por um canal privado.
 
 O seletor aparece ao acessar uma empresa como Administrador, desde que a conta tenha acesso a mais de uma empresa. Nos demais perfis, a barra superior exibe o nome da empresa atual.
 
 Todo usuário com um colaborador ativo vinculado tem acesso a **Meus itens** e aos seus pedidos em **Solicitações**. O vínculo pessoal é independente das unidades autorizadas para a operação.
 
-Em **Colaboradores**, um administrador pode abrir **Configurar acesso** para informar o e-mail usado no login, vincular a pessoa e escolher seu perfil. Para **Almoxarifado** e **Gestor**, selecione as unidades autorizadas. Para **Encarregado**, indique a pessoa no campo **Encarregado responsável** do cadastro de cada integrante da equipe.
+Em **Colaboradores**, um administrador pode abrir **Configurar acesso** para informar o e-mail usado no login, vincular a pessoa e escolher seu perfil. Para **Almoxarifado** e **Gestor**, selecione as unidades autorizadas. Para **Gerência**, indique a pessoa no campo **Responsável da Gerência** do cadastro de cada integrante da equipe.
 
-Para terceiros, informe o empregador em **Empresa terceirizada**, por exemplo, LUK. O cadastro fica na empresa do grupo e na unidade onde a pessoa atua. O gestor pode conceder o perfil **Encarregado** em **Equipe → Dar acesso de encarregado** para colaboradores ativos de suas unidades, inclusive terceirizados.
+Para terceiros, informe o empregador em **Empresa terceirizada**, por exemplo, LUK. O cadastro fica na empresa do grupo e na unidade onde a pessoa atua. O gestor pode conceder o perfil **Gerência** em **Equipe → Dar acesso de Gerência** para colaboradores ativos de suas unidades, inclusive terceirizados.
 
 **Trocar senha** fica no menu da conta. Para recuperar uma senha esquecida, um administrador pode abrir **Acessos e perfis**, editar a conta e usar **Redefinir senha**. A redefinição encerra as sessões da conta e exige a troca da senha temporária no login. Para uma conta vinculada a mais de uma empresa, o administrador precisa administrar todas elas.
 
@@ -50,7 +50,7 @@ Para terceiros, informe o empregador em **Empresa terceirizada**, por exemplo, L
 1. Cadastre o item como EPI ou uniforme e um almoxarifado vinculado à unidade. Em **Estoque → Registrar entrada**, escolha o item e informe a quantidade.
 2. Para uma solicitação, entre como Colaborador e informe o item, a quantidade e o motivo. O pedido segue para atendimento. Se estiver fora do catálogo, o almoxarifado identifica o item antes da entrega.
 3. Em **Solicitações**, os perfis operacionais veem o saldo da unidade e o que falta para atender. **Alertas** mostra saldo baixo ou zerado, com limite configurável por item e unidade e padrão de cinco unidades. As regras de aprovação ficam guardadas para uso futuro, com o fluxo de aprovação desativado por padrão.
-4. Administrador, Gestor, Encarregado e Almoxarifado podem registrar entregas no seu escopo. O sistema baixa o saldo, registra a entrega e conclui a solicitação em uma única transação. O anexo PDF, PNG ou JPEG de até 3 MB é opcional.
+4. Administrador, Gestor, Gerência e Almoxarifado podem registrar entregas no seu escopo. O sistema baixa o saldo, registra a entrega e conclui a solicitação em uma única transação. O anexo PDF, PNG ou JPEG de até 3 MB é opcional.
 5. Em **Meus itens**, o colaborador usa **Confirmo que recebi** na seção **Aguardando confirmação**. O item passa para **Itens em uso** e a confirmação aparece no histórico com autor, data e hora.
 
 Use **Não encontrei o item** para descrever o que precisa. Um operador vincula o pedido a um item ativo do catálogo, e o pedido segue para atendimento com a configuração atual.

@@ -11,7 +11,7 @@ A [documentação do sistema](docs/README.md) detalha o comportamento implementa
 - Nos formulários de cadastro e configuração, **Salvar** conclui a edição e **Salvar e continuar** mantém o formulário aberto. Em entregas anteriores, manter o colaborador e a data após cada lançamento.
 - Um sistema, duas identidades visuais e dados segregados por empresa.
 - Atender múltiplas unidades e almoxarifados.
-- Não implementar devoluções, manutenção, compras ou fluxos complexos na V1.
+- Registrar devoluções para descarte no atendimento de trocas. Manutenção e compras ficam fora da V1.
 - Prototipar telas primeiro em HTML/CSS/JS simples; somente depois integrar ao aplicativo.
 - Não inventar regras de segurança: parâmetros de prazo e fornecimento devem ser definidos pelos responsáveis da empresa.
 
@@ -26,8 +26,8 @@ A [documentação do sistema](docs/README.md) detalha o comportamento implementa
 
 ## 4. Perfis
 - **Administrador:** usuários, empresas, unidades, almoxarifados, configurações e regras de aprovação.
-- **Gestor:** cadastro de colaboradores, concessão do perfil Encarregado, operação de estoque e entregas, e acompanhamento das unidades autorizadas.
-- **Encarregado:** cadastro e consulta da equipe direta, atendimento de solicitações no seu escopo e operação de estoque da unidade. Pode decidir solicitações da equipe quando a aprovação estiver ativada.
+- **Gestor:** cadastro de colaboradores, concessão do perfil Gerência, operação de estoque e entregas, e acompanhamento das unidades autorizadas.
+- **Gerência:** cadastro e consulta da equipe direta, atendimento de solicitações no seu escopo e operação de estoque da unidade. Pode decidir solicitações da equipe quando a aprovação estiver ativada.
 - **Almoxarifado:** estoque, entradas, entregas e atendimento de solicitações.
 - **Colaborador:** consulta de seus itens, confirmação do recebimento e abertura/acompanhamento de solicitações.
 - O usuário com cadastro de colaborador ativo vinculado também tem acesso à área pessoal.
@@ -36,18 +36,18 @@ A [documentação do sistema](docs/README.md) detalha o comportamento implementa
 ## 5. Módulos V1
 1. Login e seleção de empresa quando autorizado.
 2. Dashboard por perfil.
-3. Colaboradores: matrícula, nome, empresa do grupo, empresa terceirizada quando houver, unidade, setor, função, encarregado e situação.
-4. Cadastro de itens: tipo EPI ou uniforme, nome, fabricante/modelo e observações. Para EPI, CA e sua validade.
+3. Colaboradores: matrícula, nome, empresa do grupo, empresa terceirizada quando houver, unidade, setor, função, responsável da Gerência e situação.
+4. Cadastro de itens: tipo EPI ou uniforme, nome, fabricante/modelo e observações. Para EPI, CA e sua validade, com consulta à base importada do CAEPI.
 5. Estoque: item, validade opcional do produto, quantidade por almoxarifado, entradas e baixas.
 6. Histórico: entregas com baixa e registros de fichas de papel com o saldo preservado. Ambos guardam colaborador, item, quantidade, data, responsável e anexo opcional. A confirmação digital do destinatário se aplica às entregas com baixa.
 7. Meus itens: EPIs e uniformes recebidos, histórico e confirmação de recebimento.
 8. Solicitações: item, quantidade, motivo, situação e aprovação quando exigida. Item fora do catálogo aguarda identificação.
 9. Alertas separados para estoque baixo ou zerado, validade de CA e validade de produto/lote.
-10. Relatórios básicos: entregas, pendências e vencimentos, com filtros por empresa/unidade.
+10. Relatórios de entregas, pendências, vencimentos e ficha individual de EPI, com filtros por empresa e unidade.
 
 ## 6. Regras de negócio
 - Cada colaborador pertence a uma empresa e unidade; matrícula única no escopo da empresa.
-- A empresa terceirizada identifica o empregador. O administrador ou o gestor da unidade pode conceder a um colaborador terceirizado o perfil Encarregado na unidade em que atua.
+- A empresa terceirizada identifica o empregador. O administrador ou o gestor da unidade pode conceder a um colaborador terceirizado o perfil Gerência na unidade em que atua.
 - Cada almoxarifado pertence a uma unidade.
 - A baixa de estoque e o registro da entrega ocorrem em uma transação atômica que impede estoque negativo. A confirmação de recebimento é feita depois pelo destinatário.
 - Nova entrega de substituição acrescenta um registro ao histórico.
@@ -67,6 +67,7 @@ A [documentação do sistema](docs/README.md) detalha o comportamento implementa
 - Anexos de comprovantes devem ser vinculados à entrega, protegidos por autorização e integridade.
 - A entrega para reposição por dano ou desgaste segue o fluxo de estoque e entrega.
 - O pedido de troca aceita texto, foto ou ambos como justificativa. A foto fica vinculada ao pedido e disponível para visualização conforme as permissões da solicitação.
+- Para concluir uma troca, registrar a data em que o item antigo foi recebido para descarte. As unidades devolvidas saem de uso e o saldo disponível não é acrescido.
 
 ## 7. Modelo de dados inicial
 Entidades: `empresas`, `unidades`, `almoxarifados`, `usuarios`, `usuario_escopos`, `colaboradores`, `epis`, `epi_lotes`, `estoques`, `movimentacoes`, `solicitacoes`, `regras_aprovacao`, `entregas`, `comprovantes`, `auditoria_eventos`.
@@ -103,7 +104,7 @@ Catálogo de EPIs e uniformes, CA, lotes, validade, entradas e saldos por almoxa
 Registro, baixa atômica, histórico, confirmação de recebimento e anexos opcionais.
 
 ### Etapa 4 — Solicitações
-Portal do colaborador, aprovação configurável, fila do encarregado e atendimento pelo almoxarifado.
+Portal do colaborador, aprovação configurável, fila da Gerência e atendimento pelo almoxarifado.
 
 ### Etapa 5 — Alertas e relatórios
 Dashboard por perfil, alertas de validade de CA e lote, filtros e exportação básica.
@@ -114,7 +115,7 @@ Testes, acessibilidade, segurança, autorização entre empresas, concorrência 
 ## 10. Critérios de aceite essenciais
 - Alternar entre TSA e TSA Lynx altera marca e cores sem misturar dados.
 - Colaborador visualiza apenas seus EPIs e pedidos.
-- Encarregado aprova somente solicitações da equipe autorizada.
+- A Gerência aprova somente solicitações da equipe autorizada.
 - Entrega sem estoque disponível é rejeitada sem gravar baixa parcial.
 - Apenas o destinatário confirma o recebimento da própria entrega.
 - Alertas de CA e lote/produto são exibidos separadamente.

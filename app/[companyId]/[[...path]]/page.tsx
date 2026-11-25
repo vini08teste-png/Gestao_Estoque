@@ -92,8 +92,8 @@ async function Units({ scope, edit }: { scope: AccessScope; edit: string }) {
   );
 }
 
-async function Employees({ scope, edit, supervisorAccess, query, status, awaitingReceipt }: {
-  scope: AccessScope; edit: string; supervisorAccess: string; query: string; status: string; awaitingReceipt: boolean;
+async function Employees({ scope, edit, supervisorAccess, query, status, filters }: {
+  scope: AccessScope; edit: string; supervisorAccess: string; query: string; status: string; filters: Query;
 }) {
   const admin = canAdminister(scope);
   const canCreate = canAddEmployees(scope);
@@ -109,14 +109,14 @@ async function Employees({ scope, edit, supervisorAccess, query, status, awaitin
     });
     if (!person) notFound();
     return <>
-      <Heading title="Acesso de encarregado" description={`${person.name} · ${person.unit.name}`} />
+      <Heading title="Acesso de Gerência" description={`${person.name} · ${person.unit.name}`} />
       <Editor title="Perfil de acesso" base={base}>
         {person.scope?.active && person.scope.role === "SUPERVISOR" ? (
-          <p className="empty" role="status">Acesso de encarregado ativo.</p>
+          <p className="empty" role="status">Acesso de Gerência ativo.</p>
         ) : person.scope && (!person.scope.active || person.scope.role !== "EMPLOYEE") ? (
           <p className="empty">Peça a um administrador para revisar o perfil atual desta pessoa.</p>
         ) : (
-          <ActionForm key={person.id} action={grantSupervisorAccess.bind(null, companyId, person.id)} label="Dar acesso de encarregado">
+          <ActionForm key={person.id} action={grantSupervisorAccess.bind(null, companyId, person.id)} label="Dar acesso de Gerência">
             {person.scope ? <p>A pessoa continuará usando o mesmo e-mail e a mesma senha.</p> :
               <div className="form-grid">
                 <label className="field">E-mail de acesso<input name="email" type="email" maxLength={254} autoComplete="off" required /></label>
@@ -157,11 +157,11 @@ async function Employees({ scope, edit, supervisorAccess, query, status, awaitin
                   <option value="" disabled>Selecione</option>
                   {units.map((unit) => <option key={unit.id} value={unit.id}>{unit.name}{!unit.active ? " (inativa)" : ""}</option>)}
                 </select></label>
-                {scope.role !== "SUPERVISOR" && <label className="field">Encarregado responsável<select name="supervisor" defaultValue={current?.supervisorId ?? ""}>
-                  <option value="">Sem encarregado</option>
+                {scope.role !== "SUPERVISOR" && <label className="field">Responsável da Gerência<select name="supervisor" defaultValue={current?.supervisorId ?? ""}>
+                  <option value="">Sem responsável da Gerência</option>
                   {people.map((person) => <option key={person.id} value={person.id}>
                     {person.name}{person.contractorCompany && ` · ${person.contractorCompany}`} · {person.unit.name}</option>)}
-                </select><small>Escolha o encarregado da mesma unidade. Ele pode ser de uma empresa terceirizada.</small></label>}
+                </select><small>Escolha o responsável da Gerência da mesma unidade. A pessoa pode ser de uma empresa terceirizada.</small></label>}
                 <TextField name="department" label="Setor" value={current?.department} />
                 <TextField name="jobTitle" label="Função" value={current?.jobTitle} />
               </div>
@@ -175,34 +175,31 @@ async function Employees({ scope, edit, supervisorAccess, query, status, awaitin
   const people = await db.employee.findMany({
     where: {
       ...employeesWhere(scope),
-      ...(status === "ativo" || status === "inativo" ? { active: status === "ativo" } : {}),
-      ...(query ? { OR: [
+      ...(!team && status ? { active: status === "ativo" } : {}),
+      ...(!team && query ? { OR: [
         { name: { contains: query, mode: "insensitive" } },
         { registration: { contains: query, mode: "insensitive" } },
         { contractorCompany: { contains: query, mode: "insensitive" } },
       ] } : {}),
     },
-    include: { unit: { select: { name: true } }, supervisor: { select: { name: true } }, scope: { select: { userId: true, role: true, active: true } } },
+    include: { unit: { select: { name: true } }, supervisor: { select: { id: true, name: true } }, scope: { select: { userId: true, role: true, active: true } } },
     orderBy: { name: "asc" },
   });
   return (
     <>
-      <Heading title={title} description={team ? "Veja o que cada pessoa tem em uso e o que está pendente." : scope.company.name}
+      <Heading title={title} description={team ? undefined : scope.company.name}
         action={canCreate && <NewLink base={base}>Novo colaborador</NewLink>} />
-      {scope.role !== "EMPLOYEE" && (
+      {scope.role !== "EMPLOYEE" && !team && (
         <form className="filters" action={base}>
           <label className="field">Nome, matrícula ou terceirizada<input name="q" type="search" maxLength={80} defaultValue={query} /></label>
           <label className="field">Situação<select name="status" defaultValue={status}>
             <option value="">Todas</option><option value="ativo">Ativo</option><option value="inativo">Inativo</option>
           </select></label>
-          {team && <label className="field">Recebimento<select name="pendencia" defaultValue={awaitingReceipt ? "confirmacao" : ""}>
-            <option value="">Todos</option><option value="confirmacao">Aguardando confirmação</option>
-          </select></label>}
           <button className="button" type="submit">Filtrar</button>
         </form>
       )}
-      {team ? <TeamOverview scope={scope} people={people} awaitingReceipt={awaitingReceipt} /> :
-      <Table label={title} columns={["Matrícula", "Nome", "Empresa terceirizada", "Unidade", "Setor", "Função", "Encarregado", "Situação", ...(admin ? ["Ação"] : [])]}
+      {team ? <TeamOverview scope={scope} people={people} search={query} status={status} filters={filters} /> :
+      <Table label={title} columns={["Matrícula", "Nome", "Empresa terceirizada", "Unidade", "Setor", "Função", "Responsável da Gerência", "Situação", ...(admin ? ["Ação"] : [])]}
         rows={people.map((person) => [person.id, person.registration, person.name, person.contractorCompany ?? "—", person.unit.name, person.department,
           person.jobTitle, person.supervisor?.name ?? "—", <Status active={person.active} />,
           ...(admin ? [<div className="row-actions">
@@ -292,7 +289,7 @@ async function Users({ scope, edit, viewerId, profile, employeeId }: {
           <p>Em <strong>Colaboradores</strong>, use <strong>Configurar acesso</strong> na linha da pessoa. Informe o e-mail de login e escolha o perfil.</p>
           <dl>{(["WAREHOUSE", "SUPERVISOR", "MANAGER"] as const).map((role) => <div key={role}>
             <dt>{roles[role]}</dt><dd>{role === "WAREHOUSE" ? "Marque as unidades na edição do acesso."
-              : role === "SUPERVISOR" ? "Selecione a pessoa no campo Encarregado responsável no cadastro de cada membro da equipe." : "Marque as unidades que o gestor acompanha."}</dd>
+              : role === "SUPERVISOR" ? "Selecione a pessoa no campo Responsável da Gerência no cadastro de cada membro da equipe." : "Marque as unidades que o gestor acompanha."}</dd>
           </div>)}</dl>
         </div>
       </details>
@@ -342,7 +339,7 @@ export default async function CompanyPage({ params, searchParams }: {
     dashboard: <Dashboard scope={scope} />,
     unidades: <Units scope={scope} edit={edit} />,
     colaboradores: <Employees scope={scope} edit={edit} query={query} status={status}
-      supervisorAccess={typeof search.encarregado === "string" ? search.encarregado : ""} awaitingReceipt={search.pendencia === "confirmacao"} />,
+      supervisorAccess={typeof search.encarregado === "string" ? search.encarregado : ""} filters={search} />,
     usuarios: <Users scope={scope} edit={edit} viewerId={viewer.id}
       profile={typeof search.perfil === "string" && Object.hasOwn(roles, search.perfil) ? search.perfil as Role : undefined}
       employeeId={typeof search.colaborador === "string" ? search.colaborador : ""} />,

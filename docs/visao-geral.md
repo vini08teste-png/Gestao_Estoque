@@ -29,7 +29,7 @@ O menu lateral pode ser recolhido no desktop. Os nomes dos botões aparecem ao p
 
 ## Exemplo do cadastro ao recebimento
 
-1. Na **TSA Lynx**, o administrador cadastra a unidade e uma pessoa da **LUK** que trabalha nela. Em **Configurar acesso**, atribui o perfil **Encarregado** e vincula os colaboradores da equipe à pessoa cadastrada.
+1. Na **TSA Lynx**, o administrador cadastra a unidade e uma pessoa da **LUK** que trabalha nela. Em **Configurar acesso**, atribui o perfil **Gerência** e vincula os colaboradores da equipe à pessoa cadastrada.
 2. O operador cadastra uma camiseta em **Cadastro de itens** e registra a entrada no almoxarifado da unidade.
 3. Um colaborador pede cinco camisetas. A solicitação entra na fila. Se houver apenas três disponíveis, a fila indica que faltam duas e o estoque baixo aparece em **Alertas**.
 4. Após a reposição, um operador registra a entrega pelo almoxarifado com saldo suficiente. O sistema reduz o saldo e conclui o pedido.
