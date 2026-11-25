@@ -337,7 +337,6 @@ button:disabled { cursor: wait; opacity: .68; }
 .password-help { margin-top: 16px; font-size: .875rem; }
 .password-help summary { color: var(--brand); cursor: pointer; font-weight: 650; }
 .password-help p { margin-top: 8px; }
-.row-actions { display: flex; flex-wrap: wrap; gap: 4px 12px; min-width: 130px; }
 .button.primary.danger { background: #a51e22; border-color: #a51e22; }
 .button.primary.danger:hover { background: #76161c; border-color: #76161c; }
 .text-action.danger { color: #a51e22; }

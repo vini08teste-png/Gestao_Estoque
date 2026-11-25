@@ -6,6 +6,7 @@ import { AccessScopeFields } from "@/components/access-scope-fields";
 import { ActionForm } from "@/components/action-form";
 import { Catalog, Deliveries, ExpectedItems, Inventory, Requests, Rules } from "@/components/equipment-pages";
 import { Alerts, Dashboard, Reports } from "@/components/reporting-pages";
+import { RowActions } from "@/components/row-actions";
 import { TeamOverview } from "@/components/team-overview";
 import { sections, Workspace, type Section } from "@/components/workspace";
 import { canAdminister, requireScope, type AccessScope } from "@/lib/auth";
@@ -205,19 +206,14 @@ async function Employees({ scope, edit, supervisorAccess, query, status, filters
       <Table label={title} columns={["Matrícula", "Nome", "Empresa", "Unidade", "Setor", "Função", "Responsável da Gerência", "Situação", ...(admin ? ["Ação"] : [])]}
         rows={people.map((person) => [person.id, person.registration, person.name, employeeCompanyName(scope.company.name, person.contractorCompany), person.unit.name, person.department,
           person.jobTitle, person.supervisor?.name ?? "—", <Status active={person.active} />,
-          ...(admin ? [<div>
-            <button type="button" className="button row-actions-trigger" popoverTarget={`employee-actions-${person.id}`}
-              aria-label={`Ações de ${person.name}`} title="Ações">⋯</button>
-            <div id={`employee-actions-${person.id}`} className="panel row-actions-popover" popover="auto" role="group"
-              aria-label={`Ações de ${person.name}`}>
+          ...(admin ? [<RowActions id={`employee-actions-${person.id}`} label={`Ações de ${person.name}`}>
               <EditLink base={base} id={person.id} label={person.name} />
               <Link className="text-action" aria-label={`Configurar acesso de ${person.name}`}
                 href={`/${companyId}/usuarios?${person.scope ? `edit=${encodeURIComponent(person.scope.userId)}` :
                   `edit=novo&colaborador=${encodeURIComponent(person.id)}`}`}>Configurar acesso</Link>
               {person.active && <Link className="text-action" aria-label={`Registrar entregas anteriores de ${person.name}`}
                 href={`/${companyId}/entregas?edit=ficha&colaborador=${encodeURIComponent(person.id)}`}>Registrar entregas anteriores</Link>}
-            </div>
-          </div>] : [])])} />}
+          </RowActions>] : [])])} />}
     </>
   );
 }

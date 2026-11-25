@@ -12,6 +12,7 @@ import { DeliveryProofField } from "@/components/delivery-proof-field";
 import { EquipmentPicker } from "@/components/equipment-picker";
 import { ItemCategoryFields } from "@/components/item-category-fields";
 import { RequestEquipmentField } from "@/components/request-equipment-field";
+import { RowActions } from "@/components/row-actions";
 import { ReplacementPhotoField } from "@/components/replacement-photo-field";
 import { Icon } from "@/components/icon";
 import { canAdminister, type AccessScope } from "@/lib/auth";
@@ -728,9 +729,10 @@ export async function Deliveries({ scope, create, requestId, registered, paper =
           </details>}
         </div> : "—",
         row.proof ? <a className="text-action" href={`/comprovantes/${companyId}/${row.id}`}>Baixar</a> : "—",
-        ...(admin ? [<div className="row-actions">
+        ...(admin ? [<RowActions id={`delivery-actions-${row.id}`}
+          label={`Ações de ${row.equipment.name} para ${row.employee.name} em ${formatDay(row.deliveredAt)}`}>
           <Link className="text-action" href={`${root}?edit=${encodeURIComponent(row.id)}`}>Editar</Link>
           {row.returnedQuantity === 0 && <Link className="text-action danger" href={`${root}?apagar=${encodeURIComponent(row.id)}`}>Apagar</Link>}
-        </div>] : [])])} />
+        </RowActions>] : [])])} />
   </>;
 }

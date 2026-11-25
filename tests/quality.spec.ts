@@ -793,6 +793,13 @@ test("administrador corrige e apaga entregas com auditoria e saldo consistente",
     .format(original.createdAt);
   await expect(page.getByRole("columnheader", { name: "Registrado em" })).toBeVisible();
   await expect(paperRow.getByRole("cell", { name: recordedAt, exact: true })).toBeVisible();
+  const paperActions = paperRow.getByRole("button", { name: /^Ações de/ });
+  await expect(paperRow.getByRole("link", { name: "Editar", exact: true })).toBeHidden();
+  await paperActions.press("Enter");
+  await expect(paperRow.getByRole("link", { name: "Apagar", exact: true })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(paperRow.getByRole("link", { name: "Apagar", exact: true })).toBeHidden();
+  await paperActions.click();
   await paperRow.getByRole("link", { name: "Editar", exact: true }).click();
   await page.getByRole("combobox", { name: "Colaborador" }).selectOption(scenario.outside.id);
   await page.getByRole("combobox", { name: "Item", exact: true }).selectOption(scenario.scarce.item.id);
@@ -806,6 +813,7 @@ test("administrador corrige e apaga entregas com auditoria e saldo consistente",
   });
   const corrected = historyRow(scenario.scarce.item.name, scenario.outside.name);
   await expect(corrected.getByRole("cell", { name: recordedAt, exact: true })).toBeVisible();
+  await corrected.getByRole("button", { name: /^Ações de/ }).click();
   await corrected.getByRole("link", { name: "Apagar", exact: true }).click();
   await page.getByLabel("Motivo da exclusão").fill("Registro duplicado.");
   await page.getByRole("button", { name: "Apagar entrega" }).click();
@@ -832,6 +840,7 @@ test("administrador corrige e apaga entregas com auditoria e saldo consistente",
   expect(await balance()).toBe(5);
   const delivery = await db.delivery.findFirstOrThrow({ where: { companyId, equipmentId: item.id } });
   await db.deliveryReceipt.create({ data: { companyId, deliveryId: delivery.id, actorId: scenario.employeeAccount.id } });
+  await stocked.getByRole("button", { name: /^Ações de/ }).click();
   await stocked.getByRole("link", { name: "Editar", exact: true }).click();
   await page.getByLabel("Quantidade").fill("2");
   await page.getByLabel("Motivo da correção").fill("A quantidade correta era duas unidades.");
@@ -840,6 +849,7 @@ test("administrador corrige e apaga entregas com auditoria e saldo consistente",
   expect(await balance()).toBe(6);
   expect(await db.deliveryReceipt.count({ where: { companyId, deliveryId: delivery.id } })).toBe(0);
   await page.getByRole("link", { name: "Voltar ao Histórico" }).click();
+  await stocked.getByRole("button", { name: /^Ações de/ }).click();
   await stocked.getByRole("link", { name: "Apagar", exact: true }).click();
   await page.getByLabel("Motivo da exclusão").fill("A entrega foi lançada em duplicidade.");
   await page.getByRole("button", { name: "Apagar entrega" }).click();
@@ -858,6 +868,7 @@ test("administrador corrige e apaga entregas com auditoria e saldo consistente",
   await page.getByRole("button", { name: "Confirmar entrega" }).click();
   await expect(stocked).toBeVisible();
   expect(await balance()).toBe(6);
+  await stocked.getByRole("button", { name: /^Ações de/ }).click();
   await stocked.getByRole("link", { name: "Apagar", exact: true }).click();
   await page.getByLabel("Motivo da exclusão").fill("Atendimento lançado antes da entrega.");
   await page.getByRole("button", { name: "Apagar entrega" }).click();
