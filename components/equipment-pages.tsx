@@ -64,7 +64,7 @@ function Choose({ label, name, values, empty = "Selecione", optional = false, se
 const textField = (label: string, name: string, value?: string, maxLength = 120) =>
   <label className="field">{label}<input name={name} defaultValue={value} maxLength={maxLength} required /></label>;
 const quantityField = <label className="field">Quantidade<input name="quantity" type="number" min={1} max={1_000_000} required /></label>;
-const receiptDate = new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", dateStyle: "short", timeStyle: "short" });
+const dateTimeInBrazil = new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", dateStyle: "short", timeStyle: "short" });
 const deliveryFeedback: Record<string, string> = {
   "1": "Entrega registrada e saldo atualizado.",
   ficha: "Entrega anterior registrada.",
@@ -574,7 +574,7 @@ export async function Deliveries({ scope, create, requestId, registered, paper =
       </ActionForm>
     </details>;
   const receiptCell = (row: (typeof rows)[number], canConfirm: boolean) => row.receipt ?
-    <span className="badge active">Confirmado em {receiptDate.format(row.receipt.confirmedAt)}</span> :
+    <span className="badge active">Confirmado em {dateTimeInBrazil.format(row.receipt.confirmedAt)}</span> :
     !row.warehouseId ? <span className="badge">Entrega anterior</span> :
     canConfirm ? <ActionForm action={confirmReceipt.bind(null, companyId, row.id)} label="Confirmo que recebi" /> : "Aguardando confirmação";
   const itemCard = (row: (typeof rows)[number], allowActions: boolean) =>
@@ -628,20 +628,21 @@ export async function Deliveries({ scope, create, requestId, registered, paper =
         <div className="personal-equipment">
           {outOfUse.map((row) => <article className="panel personal-equipment-card personal-retired-card" key={row.id}>
             <h3>{row.equipment.name}</h3>
-            <p>{retirementLabels[row.retirement!.reason]} · {receiptDate.format(row.retirement!.retiredAt)}</p>
+            <p>{retirementLabels[row.retirement!.reason]} · {dateTimeInBrazil.format(row.retirement!.retiredAt)}</p>
             {replacement(row)}
           </article>)}
         </div>
       </>}
       <h2 className="section-title">Histórico de entregas</h2>
     </>}
-    <Records cardsOnMobile columns={["Item", ...(own ? [] : ["Colaborador"]), "Almoxarifado", "Quantidade", "Data", "Responsável", "Recebimento", "Situação do item", "Anexo", ...(admin ? ["Ações"] : [])]}
+    <Records cardsOnMobile columns={["Item", ...(own ? [] : ["Colaborador"]), "Almoxarifado", "Quantidade", "Data da entrega", "Registrado em", "Responsável", "Recebimento", "Situação do item", "Anexo", ...(admin ? ["Ações"] : [])]}
       rows={rows.map((row) => [row.id, row.equipment.name, ...(own ? [] : [row.employee.name]), row.stock?.warehouse.name ?? "—", row.quantity,
         <time className="delivery-day" dateTime={inputDay(row.deliveredAt)}>{formatDay(row.deliveredAt)}</time>,
+        <time className="delivery-day" dateTime={row.createdAt.toISOString()}>{dateTimeInBrazil.format(row.createdAt)}</time>,
         row.actor.scopes[0]?.name ?? "—",
         receiptCell(row, own && !pendingIds.has(row.id)),
         row.retirement ? <details className="record-details"><summary>Retirado de uso</summary>
-          <p>{retirementLabels[row.retirement.reason]} · {receiptDate.format(row.retirement.retiredAt)}</p><p>{row.retirement.note}</p>
+          <p>{retirementLabels[row.retirement.reason]} · {dateTimeInBrazil.format(row.retirement.retiredAt)}</p><p>{row.retirement.note}</p>
         </details> : "—",
         row.proof ? <a className="text-action" href={`/comprovantes/${companyId}/${row.id}`}>Baixar</a> : "—",
         ...(admin ? [<div className="row-actions">

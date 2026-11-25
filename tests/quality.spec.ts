@@ -741,6 +741,10 @@ test("administrador corrige e apaga entregas com auditoria e saldo consistente",
   await signIn(page, { email, password: scenario.manager.password });
   await page.goto("/tsa/entregas");
   const paperRow = historyRow(scenario.uniform.item.name, scenario.worker.name).filter({ hasText: "06/10/2025" });
+  const recordedAt = new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", dateStyle: "short", timeStyle: "short" })
+    .format(original.createdAt);
+  await expect(page.getByRole("columnheader", { name: "Registrado em" })).toBeVisible();
+  await expect(paperRow.getByRole("cell", { name: recordedAt, exact: true })).toBeVisible();
   await paperRow.getByRole("link", { name: "Editar", exact: true }).click();
   await page.getByRole("combobox", { name: "Colaborador" }).selectOption(scenario.outside.id);
   await page.getByRole("combobox", { name: "Item", exact: true }).selectOption(scenario.scarce.item.id);
@@ -753,6 +757,7 @@ test("administrador corrige e apaga entregas com auditoria e saldo consistente",
     employeeId: scenario.outside.id, equipmentId: scenario.scarce.item.id, quantity: 3, movements: [],
   });
   const corrected = historyRow(scenario.scarce.item.name, scenario.outside.name);
+  await expect(corrected.getByRole("cell", { name: recordedAt, exact: true })).toBeVisible();
   await corrected.getByRole("link", { name: "Apagar", exact: true }).click();
   await page.getByLabel("Motivo da exclusão").fill("Registro duplicado.");
   await page.getByRole("button", { name: "Apagar entrega" }).click();

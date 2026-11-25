@@ -41,6 +41,8 @@ O registro aparece em **Itens em uso** com a indicação **Entrega anterior**. O
 
 ## Corrigir o Histórico
 
+Em **Registrado em**, confira a data e a hora em que o lançamento foi salvo, no horário de Brasília. A coluna **Data da entrega** mostra a data informada no lançamento. Uma edição mantém a data do registro original.
+
 Como administrador, abra **Editar** ou **Apagar** na linha da entrega e informe o motivo. A edição permite corrigir data e comprovante. A quantidade também pode ser corrigida quando estiver livre de vínculos com pedido, troca ou retirada. Em entregas anteriores sem comprovante ou vínculos, é possível corrigir o colaborador e o item.
 
 As correções de quantidade ajustam o estoque quando a entrega teve baixa. Se o colaborador já havia confirmado, o sistema pede que ele confirme a quantidade corrigida. Ao apagar uma entrega, o sistema a remove das telas operacionais, estorna a baixa quando houver e mantém a justificativa e o responsável na auditoria. A solicitação de origem volta à fila quando a entrega vinculada for apagada e o pedido ainda puder ser atendido.
