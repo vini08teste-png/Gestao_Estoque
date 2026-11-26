@@ -23,7 +23,7 @@ import { contractStockWhere, employeesWhere, unitsWhere } from "@/lib/directory"
 import { canSetStockMinimum, deliveriesAwaitingReceipt, deliveryCorrectionFields, handlesStock, hasPersonalEquipment, operationalDeliveryWhere, ownEmployeeId, personalDeliveryWhere, requestWhere } from "@/lib/equipment-access";
 import { brazilDay, formatDay, inputDay, itemsInUse, latestByItem, requestLabels, retirementLabels, todayInBrazil } from "@/lib/equipment";
 import { contractNumberLabel, inventoryTitle, isCompany, itemCatalogTitle, operationRequestTab, stockContractLabel } from "@/lib/organization";
-import { receiptConsent, receiptHash, receiptPreview, receiptSignaturePath, receiptTerm, receiptTitle } from "@/lib/receipt-signature";
+import { historicalReceiptLabel, receiptConsent, receiptHash, receiptPreview, receiptSignaturePath, receiptTerm, receiptTitle } from "@/lib/receipt-signature";
 import { openRequestStatuses, reportFilters, type Query } from "@/lib/reporting";
 import { availableLotWhere, defaultStockMinimum, requestAvailability, stockBalances, stockKey } from "@/lib/stock-availability";
 import type { Prisma } from "@/generated/prisma/client";
@@ -312,15 +312,16 @@ export async function Rules({ scope }: { scope: AccessScope }) {
 const queueLabels = { prontos: "Pronto para entregar", "falta-estoque": "Falta estoque", identificar: "Item a identificar" };
 type QueueKey = keyof typeof queueLabels;
 
-function RequestProgress({ status, available, delivered, received }: {
-  status: RequestStatus; available: boolean | undefined; delivered?: Date; received?: Date;
+function RequestProgress({ status, available, delivered, receipt }: {
+  status: RequestStatus; available: boolean | undefined; delivered?: Date; receipt?: { historical: boolean } | null;
 }) {
   if (status === "CANCELLED" || status === "REJECTED") return <p className="request-availability">Pedido enviado · {requestLabels[status]}</p>;
   const pending = status === "WAITING_CATALOG" ? "Item a identificar" : status === "PENDING_APPROVAL" ? "Aguardando aprovação" :
     available === false ? "Aguardando estoque" : "Aguardando entrega";
-  const stage = received ? 3 : delivered ? 2 : 1;
+  const stage = receipt ? 3 : delivered ? 2 : 1;
+  const receiptStep = receipt?.historical ? historicalReceiptLabel : receipt ? "Recebimento confirmado" : "Confirmação de recebimento";
   const steps = ["Pedido enviado", delivered ? "Em atendimento" : pending,
-    delivered ? `Entregue em ${formatDay(delivered)}` : "Entregue", received ? "Recebimento confirmado" : "Confirmação de recebimento"];
+    delivered ? `Entregue em ${formatDay(delivered)}` : "Entregue", receiptStep];
   return <ol className="request-progress" aria-label="Acompanhamento do pedido">
     {steps.map((step, index) => <li key={index} aria-current={index === stage ? "step" : undefined}
       className={index < stage ? "progress-done" : undefined}>{step}</li>)}
@@ -358,7 +359,7 @@ export async function Requests({ scope, edit, status, sent, queue = "", personal
     include: { equipment: true, employee: true, unit: true, photo: { select: { requestId: true } },
       itemReturn: { select: { returnedAt: true, quantity: true } },
       delivery: { select: { id: true, deliveredAt: true, quantity: true, returnedQuantity: true,
-        receipt: { select: { confirmedAt: true } }, retirement: { select: { deliveryId: true } } } } },
+        receipt: { select: { historical: true } }, retirement: { select: { deliveryId: true } } } } },
     orderBy: { openedAt: "desc" },
   });
   const catalog = !own && handlesStock(scope) && list.some((row) => row.status === "WAITING_CATALOG") ?
@@ -417,7 +418,7 @@ export async function Requests({ scope, edit, status, sent, queue = "", personal
             !own && category === "falta-estoque" ? "deadline-warning" : ""}`}>{!own && category ? queueLabels[category] : requestLabels[row.status]}</span>
         </div>
         {own && <RequestProgress status={row.status} available={availability?.ready}
-          delivered={row.delivery?.deliveredAt} received={row.delivery?.receipt?.confirmedAt} />}
+          delivered={row.delivery?.deliveredAt} receipt={row.delivery?.receipt} />}
         {own && row.delivery && !row.delivery.receipt && row.delivery.returnedQuantity < row.delivery.quantity && <Link className="button primary request-action"
           href={`/${companyId}/meus-epis${row.delivery.retirement ? "" : "#entrega-" + row.delivery.id}`}>Ir para confirmação</Link>}
         {!own && availability && <p className="request-availability">
@@ -465,7 +466,7 @@ async function DeliveryCorrection({ scope, id, remove }: { scope: AccessScope; i
     where: { companyId_id: { companyId, id }, voidedAt: null },
     include: {
       employee: { select: { id: true, name: true } }, equipment: { select: { id: true, name: true } },
-      proof: { select: { deliveryId: true } }, receipt: { select: { confirmedAt: true, verificationCode: true } },
+      proof: { select: { deliveryId: true } }, receipt: { select: { historical: true, verificationCode: true } },
       retirement: { select: { retiredAt: true } }, request: { select: { openedAt: true } },
       _count: { select: { replacementRequests: true } },
     },
@@ -514,7 +515,7 @@ async function DeliveryCorrection({ scope, id, remove }: { scope: AccessScope; i
         </div>
         {!fields.quantity && <p>A quantidade está vinculada a uma solicitação, troca ou retirada de uso.</p>}
         {fields.quantity && row.warehouseId && <p>Alterar a quantidade ajusta o saldo do contrato.
-          {row.receipt && " O colaborador precisará confirmar o recebimento da quantidade corrigida."}</p>}
+          {row.receipt && !row.receipt.historical && " O colaborador precisará confirmar o recebimento da quantidade corrigida."}</p>}
         <DeliveryProofField replacing={Boolean(row.proof)} />
         <label className="field">Motivo da correção<textarea name="note" rows={3} maxLength={500} required /></label>
       </ActionForm>}
@@ -605,7 +606,7 @@ export async function Deliveries({ scope, create, requestId, registered, paper =
       stock: { select: { warehouse: { select: { name: true, contractNumber: true } }, lot: { select: { expiresAt: true } } } },
       actor: { select: { scopes: { where: { companyId }, select: { name: true } } } },
       proof: { select: { deliveryId: true } },
-      receipt: { select: { confirmedAt: true, verificationCode: true } },
+      receipt: { select: { confirmedAt: true, historical: true, verificationCode: true } },
       retirement: { select: { reason: true, note: true, retiredAt: true } },
       returns: { select: { requestId: true, returnedAt: true, quantity: true }, orderBy: { returnedAt: "asc" } },
       replacementRequests: { where: { status: { in: ["WAITING_CATALOG", "PENDING_APPROVAL", "WAITING_DELIVERY"] } },
@@ -639,7 +640,8 @@ export async function Deliveries({ scope, create, requestId, registered, paper =
   const term = own ? receiptTerm(companyId) : null;
   const receiptCell = (row: (typeof rows)[number], canConfirm: boolean) => {
     if (row.receipt) return <div className="receipt-status">
-      <span className="badge active">Confirmado em {dateTimeInBrazil.format(row.receipt.confirmedAt)}</span>
+      <span className="badge active">{row.receipt.historical ? historicalReceiptLabel :
+        `Confirmado em ${dateTimeInBrazil.format(row.receipt.confirmedAt)}`}</span>
       {row.receipt.verificationCode && <Link className="text-action" href={receiptSignaturePath(companyId, row.id)}>Ver comprovante de aceite</Link>}
     </div>;
     if (row.returnedQuantity === row.quantity) return "Devolvido para descarte";

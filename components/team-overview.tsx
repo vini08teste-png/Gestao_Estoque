@@ -8,6 +8,7 @@ import { db } from "@/lib/db";
 import { canGrantSupervisorAccess } from "@/lib/directory";
 import { operationalDeliveryWhere, requestWhere } from "@/lib/equipment-access";
 import { brazilDay, formatDay, itemsInUse, jobTitleKey, latestByItem, plusDays, requestLabels, todayInBrazil } from "@/lib/equipment";
+import { historicalReceiptLabel } from "@/lib/receipt-signature";
 import { openRequestStatuses, type Query } from "@/lib/reporting";
 import { employeeCompanyName } from "@/lib/organization";
 
@@ -96,7 +97,7 @@ export async function TeamOverview({ scope, people, search, status, filters }: {
       select: {
         id: true, employeeId: true, equipmentId: true, quantity: true, returnedQuantity: true, warehouseId: true, deliveredAt: true,
         equipment: { select: { name: true, caExpiresAt: true } }, stock: { select: { lot: { select: { expiresAt: true } } } },
-        receipt: { select: { deliveryId: true } }, retirement: { select: { deliveryId: true } },
+        receipt: { select: { historical: true } }, retirement: { select: { deliveryId: true } },
       },
       orderBy: [{ deliveredAt: "desc" }, { createdAt: "desc" }, { id: "desc" }],
     }),
@@ -174,7 +175,8 @@ export async function TeamOverview({ scope, people, search, status, filters }: {
     rows={rows.map((row) => [row.id, row.equipment.name, row.quantity - row.returnedQuantity, formatDay(row.deliveredAt),
       <Validity value={row.stock?.lot.expiresAt ?? null} today={today} deadline={deadline} />,
       <Validity value={row.equipment.caExpiresAt} today={today} deadline={deadline} />,
-      confirmation ? <span className="badge deadline-warning">A confirmar</span> : row.warehouseId ? "Em uso" : "Entrega anterior",
+      confirmation ? <span className="badge deadline-warning">A confirmar</span> :
+        row.receipt?.historical ? historicalReceiptLabel : row.warehouseId ? "Em uso" : "Entrega anterior",
     ])} empty={confirmation ? "Nenhum recebimento pendente." : "Nenhum item em uso."} />;
 
   return <>

@@ -3,10 +3,12 @@ import { createHash, randomBytes } from "node:crypto";
 import { cookies } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 import { cache } from "react";
+import type { Prisma } from "@/generated/prisma/client";
 import { db } from "./db";
 import { isCompany } from "./organization";
 
 const ttl = 12 * 60 * 60 * 1000;
+const employeeTtl = 7 * 24 * 60 * 60 * 1000;
 const secure = process.env.NODE_ENV === "production" && process.env.LOCAL_HTTP !== "true";
 const cookieName = secure ? "__Host-epi-session" : "epi-session";
 const digest = (value: string) => createHash("sha256").update(value).digest("hex");
@@ -22,6 +24,7 @@ export const loadViewer = cache(async () => {
   const session = await db.session.findUnique({
     where: { tokenHash, expiresAt: { gt: new Date() } },
     select: {
+      employeeOnly: true,
       user: {
         select: {
           id: true,
@@ -40,6 +43,7 @@ export const loadViewer = cache(async () => {
     },
   });
   if (!session) return null;
+  if (session.employeeOnly && session.user.scopes.some(({ role }) => role !== "EMPLOYEE")) return null;
   const scopes = session.user.scopes.filter((scope) => isCompany(scope.companyId) &&
     (!["SUPERVISOR", "EMPLOYEE"].includes(scope.role) || scope.employee?.active));
   return { id: session.user.id, scopes, mustChangePassword: session.user.mustChangePassword };
@@ -62,50 +66,56 @@ export async function requireScope(companyId: string) {
 export type AccessScope = Awaited<ReturnType<typeof requireScope>>["scope"];
 export const canAdminister = (scope: AccessScope) => scope.role === "ADMIN" && scope.allUnits;
 
-function newSession(userId: string) {
+async function newSession(tx: Prisma.TransactionClient, userId: string, mustChangePassword: boolean) {
+  const scopes = mustChangePassword ? [] : await tx.userScope.findMany({
+    where: { userId, active: true },
+    select: { role: true, employee: { select: { active: true } } },
+  });
+  const employeeOnly = scopes.length > 0 && scopes.every(({ role, employee }) => role === "EMPLOYEE" && employee?.active);
   const token = randomBytes(32).toString("hex");
-  return { token, data: { tokenHash: digest(token), userId, expiresAt: new Date(Date.now() + ttl) } };
+  const expiresAt = new Date(Date.now() + (employeeOnly ? employeeTtl : ttl));
+  return { token, data: { tokenHash: digest(token), userId, expiresAt, employeeOnly } };
 }
 
-function setSessionCookie(jar: Awaited<ReturnType<typeof cookies>>, session: ReturnType<typeof newSession>) {
+function setSessionCookie(jar: Awaited<ReturnType<typeof cookies>>, session: Awaited<ReturnType<typeof newSession>>) {
   jar.set(cookieName, session.token, { httpOnly: true, secure, sameSite: "lax", path: "/", expires: session.data.expiresAt });
 }
 
 export async function createSession(userId: string, expectedHash: string) {
   const jar = await cookies();
   const priorToken = await sessionToken();
-  const session = newSession(userId);
-  const created = await db.$transaction(async (tx) => {
-    const matched = await tx.$queryRaw<{ id: string }[]>`
-      SELECT id FROM "User" WHERE id = ${userId} AND "passwordHash" = ${expectedHash} FOR UPDATE
+  const session = await db.$transaction(async (tx) => {
+    const [matched] = await tx.$queryRaw<{ mustChangePassword: boolean }[]>`
+      SELECT "mustChangePassword" FROM "User" WHERE id = ${userId} AND "passwordHash" = ${expectedHash} FOR UPDATE
     `;
-    if (!matched.length) return false;
+    if (!matched) return null;
     await tx.session.deleteMany({
       where: { OR: [{ expiresAt: { lte: new Date() } }, ...(priorToken ? [{ tokenHash: priorToken }] : [])] },
     });
     await tx.loginAttempt.deleteMany({ where: { startedAt: { lt: new Date(Date.now() - 24 * 60 * 60 * 1000) } } });
-    await tx.session.create({ data: session.data });
-    return true;
+    const created = await newSession(tx, userId, matched.mustChangePassword);
+    await tx.session.create({ data: created.data });
+    return created;
   });
-  if (!created) return false;
+  if (!session) return false;
   setSessionCookie(jar, session);
   return true;
 }
 
 export async function updatePasswordAndSession(userId: string, expectedHash: string, passwordHash: string) {
   const jar = await cookies();
-  const session = newSession(userId);
-  const updated = await db.$transaction(async (tx) => {
+  const session = await db.$transaction(async (tx) => {
     const result = await tx.user.updateMany({
       where: { id: userId, passwordHash: expectedHash },
       data: { passwordHash, mustChangePassword: false },
     });
-    if (!result.count) return false;
+    if (!result.count) return null;
     await tx.session.deleteMany({ where: { userId } });
-    await tx.session.create({ data: session.data });
-    return true;
+    const created = await newSession(tx, userId, false);
+    await tx.session.create({ data: created.data });
+    return created;
   });
-  if (!updated) return false;
+  if (!session) return false;
   setSessionCookie(jar, session);
   return true;
 }

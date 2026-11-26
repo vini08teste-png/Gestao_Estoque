@@ -122,6 +122,7 @@ model Session {
   tokenHash String   @id
   userId    String
   expiresAt DateTime
+  employeeOnly Boolean @default(false)
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
@@ -376,6 +377,7 @@ model DeliveryReceipt {
   deliveryId  String
   actorId     String
   confirmedAt DateTime @default(now())
+  historical  Boolean @default(false)
   verificationCode String? @unique
   signedContent String?
   signatureHash String?

@@ -6,7 +6,7 @@ import { contractStockWhere, employeesWhere, unitsWhere } from "@/lib/directory"
 import { deliveriesAwaitingReceipt, operationalDeliveryWhere, ownEmployeeId, personalDeliveryWhere, requestWhere } from "@/lib/equipment-access";
 import { brazilDay, formatDay, plusDays, requestLabels, todayInBrazil } from "@/lib/equipment";
 import { contractNumberLabel } from "@/lib/organization";
-import { receiptSignaturePath } from "@/lib/receipt-signature";
+import { historicalReceiptLabel, receiptSignaturePath } from "@/lib/receipt-signature";
 
 export const alertLabels = {
   ca: "Validade do CA",
@@ -157,7 +157,7 @@ function deliveredItems(scope: AccessScope, filters: Filters, kind: ReportKind |
       employee: { select: { name: true, registration: true, unit: { select: { name: true } } } },
       equipment: { select: { name: true, certificate: true } },
       stock: { select: { warehouse: { select: { contractNumber: true, unit: { select: { name: true } } } } } },
-      receipt: { select: { confirmedAt: true, verificationCode: true } },
+      receipt: { select: { historical: true, verificationCode: true } },
       returns: { select: { returnedAt: true }, orderBy: { returnedAt: "asc" } },
     },
     orderBy: [{ deliveredAt: "desc" }, { id: "desc" }],
@@ -206,7 +206,8 @@ export async function reportRows(scope: AccessScope, kind: ReportKind, filters: 
     rows: deliveries.map((row) => [
       row.employee, ...deliveryCells(row), company, row.stock?.warehouse.unit.name ?? row.employee.unit.name,
       row.returnedQuantity === row.quantity ? "Devolvido para descarte" :
-        !row.stock ? "Entrega anterior" : row.receipt ? "Confirmado" : "Aguardando confirmação",
+        row.receipt?.historical ? historicalReceiptLabel : row.receipt ? "Confirmado" :
+          !row.stock ? "Entrega anterior" : "Aguardando confirmação",
     ]),
   };
 

@@ -444,7 +444,8 @@ export async function registerDelivery(companyId: string, id: string, requestId:
     }
     await tx.delivery.create({
       data: { companyId, warehouseId, lotId: stocks[0]?.lotId ?? null, id, employeeId, actorId, equipmentId, quantity, deliveredAt, contractNumber,
-        requestId: request?.id, ...(proof && { proof: { create: { ...proof.data, name: proof.name } } }) },
+        requestId: request?.id, ...(proof && { proof: { create: { ...proof.data, name: proof.name } } }),
+        ...(paper && { receipt: { create: { actorId, historical: true } } }) },
     });
     if (warehouseId) await deductDeliveryStock(tx, { companyId, warehouseId }, id, actorId, stocks, quantity);
     await tx.equipmentEvent.create({ data: { companyId, subjectId: id, actorId, kind: paper ? "PAPER_RECORDED" : "DELIVERED" } });
@@ -502,7 +503,9 @@ export async function editDelivery(companyId: string, id: string, _: FormResult,
     if (delivery.request && deliveredAt < brazilDay(delivery.request.openedAt)) return invalid("A data não pode ser anterior à abertura da solicitação.");
     if (delivery.request?.itemReturn && deliveredAt < delivery.request.itemReturn.returnedAt) return invalid("A substituição não pode anteceder a devolução registrada.");
     if (delivery.returns[0] && deliveredAt > delivery.returns[0].returnedAt) return invalid("A entrega original não pode ser posterior à devolução registrada.");
-    if (delivery.receipt && deliveredAt > brazilDay(delivery.receipt.confirmedAt)) return invalid("A entrega deve anteceder ou coincidir com a confirmação de recebimento.");
+    if (delivery.receipt && !delivery.receipt.historical && deliveredAt > brazilDay(delivery.receipt.confirmedAt)) {
+      return invalid("A entrega deve anteceder ou coincidir com a confirmação de recebimento.");
+    }
     if (delivery.retirement && deliveredAt > brazilDay(delivery.retirement.retiredAt)) return invalid("A entrega deve anteceder ou coincidir com a retirada de uso.");
     const editable = deliveryCorrectionFields(delivery);
     const quantity = editable.quantity ? count(data) : delivery.quantity;
@@ -518,6 +521,7 @@ export async function editDelivery(companyId: string, id: string, _: FormResult,
     })) return invalid("Selecione um item ativo desta empresa.");
     const proof = await readAttachment(data, "proof");
     const difference = quantity - delivery.quantity;
+    const resetReceipt = Boolean(difference && delivery.receipt && !delivery.receipt.historical);
     if (!difference && deliveredAt.getTime() === delivery.deliveredAt.getTime() &&
         employeeId === delivery.employeeId && equipmentId === delivery.equipmentId && contractNumber === delivery.contractNumber && !proof) return;
     if (delivery.warehouseId && difference > 0) {
@@ -527,7 +531,7 @@ export async function editDelivery(companyId: string, id: string, _: FormResult,
     if (delivery.warehouseId && difference < 0) {
       await restoreDeliveryStock(tx, companyId, delivery.warehouseId, id, actorId, delivery.quantity, -difference);
     }
-    if (difference && delivery.receipt) await tx.deliveryReceipt.delete({ where: { companyId_deliveryId: { companyId, deliveryId: id } } });
+    if (resetReceipt) await tx.deliveryReceipt.delete({ where: { companyId_deliveryId: { companyId, deliveryId: id } } });
     const updatedProof = proof && { ...proof.data, name: proof.name };
     await tx.delivery.update({
       where: key, data: { deliveredAt, quantity, employeeId, equipmentId, contractNumber,
@@ -536,7 +540,7 @@ export async function editDelivery(companyId: string, id: string, _: FormResult,
     await tx.equipmentEvent.create({ data: { companyId, subjectId: id, actorId, kind: "DELIVERY_EDITED", note: JSON.stringify({
       reason: note,
       before: { deliveredAt: delivery.deliveredAt, quantity: delivery.quantity, employeeId: delivery.employeeId,
-        equipmentId: delivery.equipmentId, contractNumber: delivery.contractNumber, proofHash: delivery.proof?.sha256, receipt: difference ? delivery.receipt : undefined },
+        equipmentId: delivery.equipmentId, contractNumber: delivery.contractNumber, proofHash: delivery.proof?.sha256, receipt: resetReceipt ? delivery.receipt : undefined },
       after: { deliveredAt, quantity, employeeId, equipmentId, contractNumber, proofHash: updatedProof?.sha256 ?? delivery.proof?.sha256 },
     }) } });
   });

@@ -12,6 +12,7 @@ import { employeesWhere } from "@/lib/directory";
 import { deliveriesAwaitingReceipt, handlesStock, hasPersonalEquipment } from "@/lib/equipment-access";
 import { formatDay, inputDay, plusDays, requestLabels, todayInBrazil } from "@/lib/equipment";
 import { isCompany, roles } from "@/lib/organization";
+import { historicalReceiptLabel } from "@/lib/receipt-signature";
 import { defaultStockMinimum, stockAlerts, stockDemand } from "@/lib/stock-availability";
 import {
   alertKind, alertLabels, canViewReports, deadlineStatus, listDeadlines, openRequestStatuses,
@@ -70,7 +71,7 @@ export async function Dashboard({ scope }: { scope: AccessScope }) {
   const openRequests = { ...unitRequestWhere(scope, "", personal), status: { in: [...openRequestStatuses()] } };
   const unconfirmed = { AND: [deliveryScope, { ...deliveriesAwaitingReceipt, retirement: null }] };
   const deliveryFields = {
-    id: true, quantity: true, returnedQuantity: true, deliveredAt: true, warehouseId: true, receipt: { select: { deliveryId: true } },
+    id: true, quantity: true, returnedQuantity: true, deliveredAt: true, warehouseId: true, receipt: { select: { historical: true } },
     employee: { select: { name: true } }, equipment: { select: { name: true } },
   } as const;
   const [deadlines, shortages, demand, requests, receipts, deliveries, employees, latest, pendingRequests, pendingReceipts] = await Promise.all([
@@ -181,7 +182,10 @@ export async function Dashboard({ scope }: { scope: AccessScope }) {
               <div>
                 <span><strong>{row.equipment.name}</strong><small>{detail(row.employee.name, row.quantity)} · {formatDay(row.deliveredAt)}</small></span>
                 {row.returnedQuantity === row.quantity ? <span className="badge">Devolvido para descarte</span> :
-                  <span className={`badge ${!row.warehouseId ? "" : row.receipt ? "active" : "deadline-warning"}`}>{!row.warehouseId ? "Entrega anterior" : row.receipt ? "Confirmado" : "Aguardando confirmação"}</span>}
+                  <span className={`badge ${row.receipt ? "active" : row.warehouseId ? "deadline-warning" : ""}`}>
+                    {row.receipt?.historical ? historicalReceiptLabel : row.receipt ? "Confirmado" :
+                      row.warehouseId ? "Aguardando confirmação" : "Entrega anterior"}
+                  </span>}
               </div>
             </li>)}
           </ul> : <p className="empty">Nenhuma entrega registrada.</p>}

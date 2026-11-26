@@ -2,6 +2,7 @@ import "server-only";
 import { createHash } from "node:crypto";
 
 export const receiptTitle = "Ficha de EPI e Termo de Compromisso";
+export const historicalReceiptLabel = "Aceito automaticamente";
 export const receiptConsent = "Declaro que li e concordo com o Termo de Compromisso e confirmo o recebimento dos equipamentos relacionados nesta entrega.";
 
 export function receiptTerm(companyId: string) {

@@ -60,9 +60,15 @@ test("contrato sem saldo aparece e a entrega anterior preserva o saldo", async (
   const recorded = await db.delivery.findFirstOrThrow({
     where: { companyId, employeeId: scenario.worker.id, warehouseId: null }, include: { movements: true, receipt: true },
   });
-  expect(recorded).toMatchObject({ lotId: null, quantity: 4, contractNumber: "CTR-HIST-001", movements: [], receipt: null });
+  expect(recorded).toMatchObject({
+    lotId: null, quantity: 4, contractNumber: "CTR-HIST-001", movements: [],
+    receipt: { historical: true, actorId: scenario.manager.id, verificationCode: null },
+  });
+  await page.goto("/tsa/entregas?recebimento=confirmado");
+  await expect(page.getByRole("row").filter({ hasText: "CTR-HIST-001" })).toContainText("Aceito automaticamente");
   const csv = await (await page.request.get("/exportar/tsa")).text();
   expect(csv).toContain('"CTR-HIST-001"');
+  expect(csv).toContain('"Aceito automaticamente"');
   const balance = await db.stock.findFirstOrThrow({ where: { companyId, warehouseId: warehouse.id } });
   expect(balance.quantity).toBe(2);
 
@@ -81,11 +87,36 @@ test("contrato sem saldo aparece e a entrega anterior preserva o saldo", async (
   await signOut(page);
   await signIn(page, scenario.employeeAccount);
   await page.goto("/tsa/meus-epis");
-  await expect(page.getByRole("region", { name: "Itens em uso" }).getByText(scenario.uniform.item.name)).toBeVisible();
+  await expect(page.getByRole("region", { name: "Itens em uso" }).getByText("Aceito automaticamente")).toBeVisible();
   await expect(page.getByRole("button", { name: "Confirmo que recebi" })).toHaveCount(0);
   expect((await page.request.get("/tsa/entregas?edit=ficha")).status()).toBe(404);
-  await db.delivery.delete({ where: { companyId_id: { companyId, id: recorded.id } } });
+  await db.$transaction([
+    db.deliveryReceipt.delete({ where: { companyId_deliveryId: { companyId, deliveryId: recorded.id } } }),
+    db.delivery.delete({ where: { companyId_id: { companyId, id: recorded.id } } }),
+  ]);
   await db.warehouse.update({ where: { companyId_id: { companyId, id: warehouse.id } }, data: { active: false } });
+});
+
+test("colaborador volta ao portal no mesmo navegador com uma sessão de sete dias", async ({ page, browser, baseURL }) => {
+  await signIn(page, scenario.employeeAccount);
+  const state = await page.context().storageState();
+  const cookie = state.cookies.find(({ name }) => name === "epi-session");
+  expect(cookie?.httpOnly).toBe(true);
+  const remaining = cookie!.expires * 1000 - Date.now();
+  expect(remaining).toBeGreaterThan(7 * 86_400_000 - 60_000);
+  expect(remaining).toBeLessThanOrEqual(7 * 86_400_000);
+
+  const returning = await browser.newContext({ baseURL, storageState: state });
+  try {
+    const nextPage = await returning.newPage();
+    await nextPage.goto("/login");
+    await expect(nextPage).toHaveURL(/\/tsa$/);
+    await signOut(nextPage);
+    await page.goto("/login");
+    await expect(page).toHaveURL(/\/login$/);
+  } finally {
+    await returning.close();
+  }
 });
 
 test("uma entrega por item usa o saldo combinado do contrato", async ({ page }) => {
