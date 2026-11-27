@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
-import { grantSupervisorAccess, resetUserPassword, saveCompany, saveEmployee, saveUnit, saveUser } from "@/app/organization-actions";
+import { grantSupervisorAccess, removeEmployee, resetUserPassword, saveCompany, saveEmployee, saveUnit, saveUser } from "@/app/organization-actions";
 import { AccessScopeFields } from "@/components/access-scope-fields";
 import { ActionForm } from "@/components/action-form";
 import { Catalog, Deliveries, ExpectedItems, Inventory, Requests, Rules } from "@/components/equipment-pages";
@@ -12,7 +12,7 @@ import { TeamOverview } from "@/components/team-overview";
 import { sections, Workspace, type Section } from "@/components/workspace";
 import { canAdminister, requireScope, type AccessScope } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { canAddEmployees, canGrantSupervisorAccess, contractStockWhere, employeesWhere, unitsWhere } from "@/lib/directory";
+import { canAddEmployees, canGrantSupervisorAccess, contractStockWhere, employeeHasDependencies, employeeRemovalSelect, employeesWhere, unitsWhere } from "@/lib/directory";
 import { companyBrands, employeeCompanyName, isCompany, roles } from "@/lib/organization";
 import { passwordLength } from "@/lib/password";
 import type { Role } from "@/generated/prisma/enums";
@@ -94,8 +94,8 @@ async function Units({ scope, edit }: { scope: AccessScope; edit: string }) {
   );
 }
 
-async function Employees({ scope, edit, supervisorAccess, query, status, filters }: {
-  scope: AccessScope; edit: string; supervisorAccess: string; query: string; status: string; filters: Query;
+async function Employees({ scope, edit, supervisorAccess, query, status, filters, viewerId }: {
+  scope: AccessScope; edit: string; supervisorAccess: string; query: string; status: string; filters: Query; viewerId: string;
 }) {
   const admin = canAdminister(scope);
   const canCreate = canAddEmployees(scope);
@@ -103,6 +103,29 @@ async function Employees({ scope, edit, supervisorAccess, query, status, filters
   const base = `/${companyId}/colaboradores`;
   const team = scope.role === "MANAGER" || scope.role === "SUPERVISOR";
   const title = scope.role === "EMPLOYEE" ? "Meu cadastro" : scope.role === "SUPERVISOR" ? "Minha equipe" : team ? "Equipe" : "Colaboradores";
+  const remove = typeof filters.apagar === "string" ? filters.apagar : "";
+  if (remove) {
+    if (!admin) notFound();
+    const person = await db.employee.findUnique({
+      where: { companyId_id: { companyId, id: remove } }, select: employeeRemovalSelect,
+    });
+    if (!person) notFound();
+    const linked = employeeHasDependencies(person);
+    return <>
+      <Heading title={title} />
+      <Editor title="Apagar colaborador" base={base}>
+        {person.scope?.userId === viewerId ? <p className="empty">Outro administrador precisa alterar o cadastro vinculado à sua conta.</p> :
+          linked && !person.active && !person.scope?.active ? <p className="empty">{person.name} já está inativo. Os registros vinculados permanecem disponíveis.</p> :
+            <ActionForm action={removeEmployee.bind(null, companyId, person.id, linked ? "deactivate" : "delete")}
+              label={linked ? "Desativar colaborador" : "Apagar definitivamente"} destructive>
+              <p><strong>{person.name}</strong> · Matrícula {person.registration}</p>
+              <p>{linked
+                ? "Este cadastro tem vínculos. A desativação preserva os registros e bloqueia o acesso vinculado nesta empresa."
+                : "O cadastro será apagado definitivamente."}</p>
+            </ActionForm>}
+      </Editor>
+    </>;
+  }
   if (supervisorAccess) {
     if (!canGrantSupervisorAccess(scope)) notFound();
     const person = await db.employee.findFirst({
@@ -193,6 +216,10 @@ async function Employees({ scope, edit, supervisorAccess, query, status, filters
     <>
       <Heading title={title} description={team ? undefined : scope.company.name}
         action={canCreate && <NewLink base={base}>Novo colaborador</NewLink>} />
+      {admin && (filters.resultado === "apagado" || filters.resultado === "desativado") &&
+        <p className="feedback success operation-feedback" role="status">
+          {filters.resultado === "apagado" ? "Colaborador apagado." : "Colaborador desativado."}
+        </p>}
       {scope.role !== "EMPLOYEE" && !team && (
         <form className="filters" action={base}>
           <label className="field">Nome, matrícula ou empresa<input name="q" type="search" maxLength={80} defaultValue={query} /></label>
@@ -214,6 +241,9 @@ async function Employees({ scope, edit, supervisorAccess, query, status, filters
                   `edit=novo&colaborador=${encodeURIComponent(person.id)}`}`}>Configurar acesso</Link>
               {person.active && <Link className="text-action" aria-label={`Registrar entregas anteriores de ${person.name}`}
                 href={`/${companyId}/entregas?edit=ficha&colaborador=${encodeURIComponent(person.id)}`}>Registrar entregas anteriores</Link>}
+              {person.scope?.userId !== viewerId && <Link className="text-action danger" href={`${base}?apagar=${encodeURIComponent(person.id)}`}>
+                Apagar colaborador
+              </Link>}
           </RowActions>] : [])])} />}
     </>
   );
@@ -343,7 +373,7 @@ export default async function CompanyPage({ params, searchParams }: {
   const content = {
     dashboard: <Dashboard scope={scope} />,
     unidades: <Units scope={scope} edit={edit} />,
-    colaboradores: <Employees scope={scope} edit={edit} query={query} status={status}
+    colaboradores: <Employees scope={scope} edit={edit} query={query} status={status} viewerId={viewer.id}
       supervisorAccess={typeof search.encarregado === "string" ? search.encarregado : ""} filters={search} />,
     usuarios: <Users scope={scope} edit={edit} viewerId={viewer.id}
       profile={typeof search.perfil === "string" && Object.hasOwn(roles, search.perfil) ? search.perfil as Role : undefined}

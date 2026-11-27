@@ -1,11 +1,11 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { Prisma } from "@/generated/prisma/client";
 import { canAdminister, requireScope, type AccessScope } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { canAddEmployees, canGrantSupervisorAccess, employeesWhere, unitsWhere } from "@/lib/directory";
+import { canAddEmployees, canGrantSupervisorAccess, employeeHasDependencies, employeeRemovalSelect, employeesWhere, unitsWhere } from "@/lib/directory";
 import { emailAddress, text, validEmail, type FormResult } from "@/lib/forms";
 import { finishSave } from "@/lib/form-navigation";
 import { roles } from "@/lib/organization";
@@ -107,6 +107,29 @@ export async function saveEmployee(companyId: string, id: string | null, _: Form
     else await tx.employee.create({ data: { companyId, ...values } });
   }, id ? canAdminister : canAddEmployees);
   return finishSave(result, data, `/${companyId}/colaboradores`);
+}
+
+export async function removeEmployee(companyId: string, id: string, mode: "delete" | "deactivate", _: FormResult) {
+  const result = await save(companyId, async (tx, actor) => {
+    const key = { companyId_id: { companyId, id } };
+    const employee = await tx.employee.findUnique({ where: key, select: employeeRemovalSelect });
+    if (!employee) throw new FormError("Colaborador indisponível nesta empresa.");
+    if (employee.scope?.userId === actor) throw new FormError("Outro administrador precisa alterar o cadastro vinculado à sua conta.");
+    if (mode === "delete") {
+      if (employeeHasDependencies(employee)) throw new FormError("Este cadastro tem vínculos. Reabra a confirmação para desativá-lo.");
+      await tx.employee.delete({ where: key });
+      return;
+    }
+    await tx.employee.update({ where: key, data: { active: false } });
+    if (employee.scope?.active) {
+      await tx.userScope.update({
+        where: { companyId_userId: { companyId, userId: employee.scope.userId } },
+        data: { active: false },
+      });
+    }
+  });
+  if (result.success) redirect(`/${companyId}/colaboradores?resultado=${mode === "delete" ? "apagado" : "desativado"}`);
+  return result;
 }
 
 async function createUser(tx: Prisma.TransactionClient, email: string, password: FormDataEntryValue | null) {

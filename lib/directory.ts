@@ -7,6 +7,20 @@ export const canAddEmployees = (scope: AccessScope) =>
 
 export const canGrantSupervisorAccess = (scope: AccessScope) => scope.role === "MANAGER";
 
+export const employeeRemovalSelect = {
+  id: true,
+  name: true,
+  registration: true,
+  active: true,
+  scope: { select: { userId: true, active: true } },
+  _count: { select: { deliveries: true, requests: true, team: true } },
+} satisfies Prisma.EmployeeSelect;
+
+export function employeeHasDependencies(employee: Prisma.EmployeeGetPayload<{ select: typeof employeeRemovalSelect }>) {
+  const { deliveries, requests, team } = employee._count;
+  return Boolean(employee.scope || deliveries || requests || team);
+}
+
 export function contractStockWhere(scope: AccessScope): Prisma.WarehouseWhereInput {
   return scope.role === "SUPERVISOR" ? { id: scope.employee?.contractId ?? "" } : {};
 }

@@ -56,6 +56,7 @@ export async function AdminMaintenance({ scope, query }: { scope: AccessScope; q
               <td><RowActions id={`maintenance-person-${person.id}`} label={`Ações de ${person.name}`}>
                 <Link className="text-action" href={`${base}/colaboradores?edit=${encodeURIComponent(person.id)}`}>Editar cadastro</Link>
                 <Link className="text-action" href={`${base}/entregas?q=${encodeURIComponent(person.registration)}`}>Ver histórico completo</Link>
+                <Link className="text-action danger" href={`${base}/colaboradores?apagar=${encodeURIComponent(person.id)}`}>Apagar colaborador</Link>
               </RowActions></td>
             </tr>)}</tbody>
           </table>
