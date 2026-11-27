@@ -5,7 +5,7 @@ import { notFound, redirect } from "next/navigation";
 import { Prisma } from "@/generated/prisma/client";
 import { canAdminister, requireScope, type AccessScope } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { canAddEmployees, canGrantSupervisorAccess, employeeHasDependencies, employeeRemovalSelect, employeesWhere, unitsWhere } from "@/lib/directory";
+import { canAddEmployees, canGrantSupervisorAccess, employeeHasDependencies, employeeRemovalSelect, employeesWhere, managedContracts, unitsWhere } from "@/lib/directory";
 import { emailAddress, text, validEmail, type FormResult } from "@/lib/forms";
 import { finishSave } from "@/lib/form-navigation";
 import { roles } from "@/lib/organization";
@@ -28,7 +28,8 @@ async function save(companyId: string, operation: (tx: Prisma.TransactionClient,
     await db.$transaction(async (tx) => {
       const permitted = await tx.userScope.findUnique({
         where: { companyId_userId: { companyId, userId: viewer.id }, active: true },
-        include: { company: true, units: { select: { unitId: true } }, employee: { select: { id: true, unitId: true, contractId: true, active: true } } },
+        include: { company: true, units: { select: { unitId: true } }, employee: { select: { id: true, unitId: true, contractId: true, active: true,
+          contractLinks: { select: { warehouseId: true, manages: true } } } } },
       });
       if (!permitted || !allowed(permitted)) throw new FormError("Seu acesso foi alterado. Atualize a página.");
       await operation(tx, viewer.id, permitted);
@@ -81,7 +82,10 @@ export async function saveUnit(companyId: string, id: string | null, _: FormResu
 export async function saveEmployee(companyId: string, id: string | null, _: FormResult, data: FormData) {
   const result = await save(companyId, async (tx, _, scope) => {
     const unitId = required(data, "unit", "a unidade");
-    const contractId = scope.role === "SUPERVISOR" ? scope.employee?.contractId : text(data, "contract") || null;
+    const contractId = text(data, "contract") || null;
+    if (scope.role === "SUPERVISOR" && (!contractId || !managedContracts(scope).includes(contractId))) {
+      throw new FormError("Selecione um contrato que você gerencia.");
+    }
     if (scope.role === "SUPERVISOR" && !contractId) throw new FormError("Vincule seu cadastro a um contrato para cadastrar a equipe.");
     const contractorCompany = text(data, "contractorCompany");
     if (contractorCompany.length > 120) throw new FormError("Informe o nome da empresa com até 120 caracteres.");
@@ -103,8 +107,28 @@ export async function saveEmployee(companyId: string, id: string | null, _: Form
       ] },
       select: { id: true },
     })) throw new FormError("Selecione um contrato ativo da mesma unidade.");
-    if (id) await tx.employee.update({ where: { companyId_id: { companyId, id } }, data: { ...values, supervisorId: null } });
-    else await tx.employee.create({ data: { companyId, ...values } });
+    const person = id ? await tx.employee.update({ where: { companyId_id: { companyId, id } }, data: { ...values, supervisorId: null } }) :
+      await tx.employee.create({ data: { companyId, ...values } });
+    if (canAdminister(scope) && data.has("contractLinks")) {
+      const linked = [...new Set([...(contractId ? [contractId] : []), ...data.getAll("additionalContract")
+        .filter((value): value is string => typeof value === "string" && Boolean(value))])];
+      const managed = new Set(data.getAll("managedContract"));
+      if ([...managed].some((value) => typeof value !== "string" || !linked.includes(value))) {
+        throw new FormError("Vincule o contrato antes de marcar Gerência para ele.");
+      }
+      const available = await tx.warehouse.findMany({ where: { companyId, id: { in: linked },
+        OR: [{ active: true, unit: { active: true }, contractNumber: { not: null } },
+          { employeeLinks: { some: { employeeId: person.id } } }, { id: contractId ?? "" }] }, select: { id: true } });
+      if (available.length !== linked.length) throw new FormError("Selecione contratos disponíveis nesta empresa.");
+      await tx.employeeContract.deleteMany({ where: { companyId, employeeId: person.id } });
+      if (linked.length) await tx.employeeContract.createMany({ data: linked.map((warehouseId) => ({
+        companyId, employeeId: person.id, warehouseId, manages: managed.has(warehouseId),
+      })) });
+      if (!linked.some((warehouseId) => managed.has(warehouseId))) {
+        const supervisor = await tx.userScope.findFirst({ where: { companyId, employeeId: person.id, active: true, role: "SUPERVISOR" } });
+        if (supervisor) throw new FormError("Marque pelo menos um contrato de Gerência ou altere o perfil em Acessos e perfis.");
+      }
+    }
   }, id ? canAdminister : canAddEmployees);
   return finishSave(result, data, `/${companyId}/colaboradores`);
 }
@@ -145,10 +169,21 @@ export async function grantSupervisorAccess(companyId: string, employeeId: strin
   return save(companyId, async (tx, _actor, scope) => {
     const employee = await tx.employee.findFirst({
       where: { ...employeesWhere(scope), id: employeeId, active: true },
-      select: { name: true, contractId: true, scope: { select: { userId: true, active: true, role: true } } },
+      select: { name: true, contractId: true, contractLinks: true, scope: { select: { userId: true, active: true, role: true } } },
     });
     if (!employee) throw new FormError("Colaborador ativo indisponível nas suas unidades.");
-    if (!employee.contractId) throw new FormError("Vincule o colaborador a um contrato antes de conceder acesso de Gerência.");
+    const assigned = employee.contractLinks.filter(({ manages }) => manages).map(({ warehouseId }) => warehouseId);
+    const destinationIds = assigned.length ? assigned : employee.contractId ? [employee.contractId] : [];
+    if (!destinationIds.length || await tx.warehouse.count({ where: { companyId, id: { in: destinationIds },
+      unit: unitsWhere(scope) } }) !== destinationIds.length) {
+      throw new FormError("Marque um contrato de Gerência no cadastro do colaborador.");
+    }
+    if (!assigned.length && employee.contractLinks.some(({ warehouseId }) => warehouseId === employee.contractId)) {
+      await tx.employeeContract.update({
+        where: { companyId_employeeId_warehouseId: { companyId, employeeId, warehouseId: destinationIds[0] } },
+        data: { manages: true },
+      });
+    }
     if (employee.scope) {
       const { active, role, userId } = employee.scope;
       if (active && role === "SUPERVISOR") return;
@@ -191,11 +226,16 @@ export async function saveUser(companyId: string, id: string | null, _: FormResu
       throw new FormError("Selecione apenas unidades desta empresa.");
     }
     const employeeId = usesEmployee ? required(data, "employee", "o vínculo com um colaborador") : text(data, "employee") || null;
-    const employee = employeeId ? await tx.employee.findUnique({ where: { companyId_id: { companyId, id: employeeId } } }) : null;
+    const employee = employeeId ? await tx.employee.findUnique({ where: { companyId_id: { companyId, id: employeeId } }, include: { contractLinks: true } }) : null;
     if (employeeId && !employee) {
       throw new FormError("Selecione um colaborador desta empresa.");
     }
-    if (role === "SUPERVISOR" && active && !employee?.contractId) throw new FormError("Vincule o colaborador a um contrato para ativar o perfil Gerência.");
+    if (role === "SUPERVISOR" && active && !employee?.contractLinks.some(({ manages }) => manages)) {
+      if (!employee?.contractId) throw new FormError("Marque um contrato de Gerência no cadastro do colaborador.");
+      await tx.employeeContract.updateMany({
+        where: { companyId, employeeId: employee.id, warehouseId: employee.contractId }, data: { manages: true },
+      });
+    }
     const values = { name, role, active, allUnits, employeeId };
     if (id) {
       await tx.userScope.update({

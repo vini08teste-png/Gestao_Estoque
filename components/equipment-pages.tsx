@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
 import {
   addStock, confirmReceipt, decideRequest, editDelivery, identifyItem, openRequest, registerDelivery, requestReplacement, retireDelivery,
-  removeExpectedItem, resetStockMinimum, saveEquipment, saveExpectedItem, saveRule, saveStockMinimum, saveWarehouse, voidDelivery,
+  removeExpectedItem, resetStockMinimum, saveEquipment, saveExpectedItem, saveRule, saveStockMinimum, saveWarehouse, transferEquipmentRequest, voidDelivery,
 } from "@/app/equipment-actions";
 import { ActionForm } from "@/components/action-form";
 import { Brand } from "@/components/brand";
@@ -19,13 +19,13 @@ import { ReplacementPhotoField } from "@/components/replacement-photo-field";
 import { Icon } from "@/components/icon";
 import { canAdminister, type AccessScope } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { contractStockWhere, employeesWhere, unitsWhere } from "@/lib/directory";
+import { contractStockWhere, employeeContractsWhere, employeesWhere, unitsWhere } from "@/lib/directory";
 import { canSetStockMinimum, deliveriesAwaitingReceipt, deliveryCorrectionFields, handlesStock, hasPersonalEquipment, operationalDeliveryWhere, ownEmployeeId, personalDeliveryWhere, requestWhere } from "@/lib/equipment-access";
 import { brazilDay, formatDay, inputDay, itemsInUse, latestByItem, requestLabels, retirementLabels, todayInBrazil } from "@/lib/equipment";
 import { contractNumberLabel, inventoryTitle, isCompany, itemCatalogTitle, operationRequestTab, stockContractLabel } from "@/lib/organization";
 import { historicalReceiptLabel, receiptConsent, receiptHash, receiptPreview, receiptSignaturePath, receiptTerm, receiptTitle } from "@/lib/receipt-signature";
 import { openRequestStatuses, reportFilters, type Query } from "@/lib/reporting";
-import { availableLotWhere, defaultStockMinimum, requestAvailability, stockBalances, stockKey } from "@/lib/stock-availability";
+import { availableLotWhere, contractBalanceKey, defaultStockMinimum, requestAvailability, stockBalances, stockKey } from "@/lib/stock-availability";
 import type { Prisma } from "@/generated/prisma/client";
 import type { RequestStatus } from "@/generated/prisma/enums";
 
@@ -342,21 +342,27 @@ export async function Requests({ scope, edit, status, sent, queue = "", personal
     </nav>;
   if (edit === "novo") {
     if (!own) notFound();
-    const equipment = await db.equipment.findMany({ where: { companyId, active: true }, orderBy: { name: "asc" } });
+    const [equipment, contracts] = await Promise.all([
+      db.equipment.findMany({ where: { companyId, active: true }, orderBy: { name: "asc" } }),
+      db.warehouse.findMany({ where: { companyId, ...employeeContractsWhere(scope.employee!), active: true, unit: { active: true } },
+        include: { unit: { select: { name: true } } }, orderBy: { name: "asc" } }),
+    ]);
     return <>
       <Heading title="Solicitar item" action={<Link className="button" href={root}>Voltar a meus pedidos</Link>} />
-      <Editor title="Dados da solicitação"><ActionForm action={openRequest.bind(null, companyId, randomUUID())} label="Enviar solicitação">
+      <Editor title="Dados da solicitação">{contracts.length ? <ActionForm action={openRequest.bind(null, companyId, randomUUID())} label="Enviar solicitação">
+        <Choose label="Contrato" name="contract" selected={contracts.length === 1 ? contracts[0].id : ""}
+          values={contracts.map((contract) => ({ id: contract.id, name: `${stockContractLabel(contract)} · ${contract.unit.name}` }))} />
         <RequestEquipmentField options={equipment} />
         {quantityField}
         <label className="field">Motivo<textarea name="reason" required maxLength={500} rows={3} /></label>
-      </ActionForm></Editor>
+      </ActionForm> : <p className="empty">Peça à administração para vincular um contrato ativo ao seu cadastro.</p>}</Editor>
     </>;
   }
   const list = await db.equipmentRequest.findMany({
     where: { ...(own ? { companyId, employeeId: ownEmployeeId(scope) } : requestWhere(scope)),
       ...(status === "aberto" ? { status: { in: [...openRequestStatuses()] } } :
         Object.hasOwn(requestLabels, status) ? { status: status as RequestStatus } : {}) },
-    include: { equipment: true, employee: true, unit: true, photo: { select: { requestId: true } },
+    include: { equipment: true, employee: { include: { contractLinks: { select: { warehouseId: true } } } }, unit: true, contract: true, photo: { select: { requestId: true } },
       itemReturn: { select: { returnedAt: true, quantity: true } },
       delivery: { select: { id: true, deliveredAt: true, quantity: true, returnedQuantity: true,
         receipt: { select: { historical: true } }, retirement: { select: { deliveryId: true } } } } },
@@ -364,15 +370,20 @@ export async function Requests({ scope, edit, status, sent, queue = "", personal
   });
   const catalog = !own && handlesStock(scope) && list.some((row) => row.status === "WAITING_CATALOG") ?
     await db.equipment.findMany({ where: { companyId, active: true }, select: { id: true, name: true }, orderBy: { name: "asc" } }) : [];
-  const awaitingDelivery = list.filter((row) => row.status === "WAITING_DELIVERY" && row.equipmentId &&
-    (!own || row.unitId === scope.employee?.unitId));
+  const awaitingDelivery = list.filter((row) => row.status === "WAITING_DELIVERY" && row.equipmentId);
   const balances = awaitingDelivery.length ? await stockBalances(scope,
     [...new Set(awaitingDelivery.map((row) => row.unitId))],
-    [...new Set(awaitingDelivery.flatMap((row) => row.equipmentId ? [row.equipmentId] : []))], own) : new Map();
+    [...new Set(awaitingDelivery.flatMap((row) => row.equipmentId ? [row.equipmentId] : []))], own, true) : new Map();
+  const transferOptions = !own && awaitingDelivery.length && handlesStock(scope) ? await db.warehouse.findMany({
+    where: { companyId, ...contractStockWhere(scope), active: true, unit: { ...unitsWhere(scope), active: true },
+      id: { in: [...new Set(awaitingDelivery.flatMap(({ employee }) => [employee.contractId ?? "", ...employee.contractLinks.map(({ warehouseId }) => warehouseId)]))] },
+      ...(scope.role === "SUPERVISOR" && { AND: [contractStockWhere(scope)] }),
+    }, orderBy: { name: "asc" }, include: { unit: { select: { name: true } } },
+  }) : [];
   const selectedQueue = !own && Object.hasOwn(queueLabels, queue) ? queue as QueueKey : "";
   const cards = list.map((row) => {
-    const availability = row.status === "WAITING_DELIVERY" && row.equipmentId && (!own || row.unitId === scope.employee?.unitId) ?
-      requestAvailability(balances.get(stockKey(row.unitId, row.equipmentId)), row.quantity) : null;
+    const availability = row.status === "WAITING_DELIVERY" && row.equipmentId ?
+      requestAvailability(balances.get(row.contractId ? contractBalanceKey(row.contractId, row.equipmentId) : stockKey(row.unitId, row.equipmentId)), row.quantity, Boolean(row.contractId)) : null;
     const category: QueueKey | null = row.status === "WAITING_CATALOG" ? "identificar" :
       availability ? (availability.ready ? "prontos" : "falta-estoque") : null;
     return { row, availability, category };
@@ -407,12 +418,15 @@ export async function Requests({ scope, edit, status, sent, queue = "", personal
     </form>
     {results.length ? <div className="request-list">{results.map(({ row, availability, category }) => {
       const photoUrl = row.photo && `/fotos-de-troca/${companyId}/${row.id}`;
+      const destinations = transferOptions.filter(({ id }) => id !== row.contractId &&
+        (id === row.employee.contractId || row.employee.contractLinks.some(({ warehouseId }) => warehouseId === id)));
       return (
       <article className="panel request-card" key={row.id}>
         <div className="request-card-main">
           <Icon name="receipt_long" />
           <div><h2>{row.equipment?.name ?? row.requestedItem}</h2>
             <p>{!own && `${row.employee.name} · ${row.unit.name} · `}Qtd. {row.quantity} · {formatDay(brazilDay(row.openedAt))}</p>
+            <p>{row.contract ? stockContractLabel(row.contract) : "Contrato não informado"}</p>
           </div>
           <span className={`badge ${row.status === "COMPLETED" || (!own && category === "prontos") ? "active" :
             !own && category === "falta-estoque" ? "deadline-warning" : ""}`}>{!own && category ? queueLabels[category] : requestLabels[row.status]}</span>
@@ -427,6 +441,8 @@ export async function Requests({ scope, edit, status, sent, queue = "", personal
         </p>}
         {!own && availability?.ready && handlesStock(scope) &&
           <Link className="button primary request-action" href={`/${companyId}/entregas?solicitacao=${row.id}`}>Atender pedido</Link>}
+        {!own && row.status === "COMPLETED" && row.delivery &&
+          <Link className="button request-action" href={`/${companyId}/entregas?entrega=${encodeURIComponent(row.delivery.id)}`}>Ver entrega</Link>}
         <details className="record-details"><summary>Ver detalhes</summary>
           {row.replacementForId && <p><strong>Solicitação de troca</strong></p>}
           {row.itemReturn && <p>Devolvido para descarte em {formatDay(row.itemReturn.returnedAt)} · {row.itemReturn.quantity} un.</p>}
@@ -451,6 +467,11 @@ export async function Requests({ scope, edit, status, sent, queue = "", personal
           </>}
           {!own && availability && !availability.ready && handlesStock(scope) &&
             <Link className="text-action" href={`/${companyId}/estoque`}>Consultar estoque</Link>}
+          {!own && availability && (!availability.ready || !row.contractId) && destinations.length > 0 &&
+            <ActionForm action={transferEquipmentRequest.bind(null, companyId, row.id)} label="Encaminhar pedido">
+              <Choose label="Contrato de destino" name="contract" values={destinations.map((contract) =>
+                ({ id: contract.id, name: `${stockContractLabel(contract)} · ${contract.unit.name}` }))} />
+            </ActionForm>}
           {(own || canAdminister(scope)) && ["WAITING_CATALOG", "PENDING_APPROVAL", "WAITING_DELIVERY"].includes(row.status) &&
             <ActionForm action={decideRequest.bind(null, companyId, row.id, "cancel")} label="Cancelar solicitação" />}
         </details>
@@ -539,31 +560,43 @@ export async function Deliveries({ scope, create, requestId, registered, paper =
     if (!operator) notFound();
     if (paper && requestId) notFound();
     const request = requestId ? await db.equipmentRequest.findFirst({
-      where: { ...requestWhere(scope), id: requestId, status: "WAITING_DELIVERY" },
+      where: { ...requestWhere(scope), id: requestId },
       include: { employee: true, equipment: true, itemReturn: { select: { returnedAt: true } },
+        delivery: { select: { id: true, voidedAt: true } },
         replacementFor: { select: { deliveredAt: true, equipment: { select: { name: true } } } } },
     }) : null;
-    if (requestId && (!request || !request.equipment)) notFound();
+    if (request?.status === "COMPLETED" && request.delivery && !request.delivery.voidedAt) return <>
+      <Heading title="Pedido atendido" action={<Link className="button" href={`/${companyId}/solicitacoes`}>Voltar às solicitações</Link>} />
+      <section className="panel editor">
+        <div className="form-stack">
+          <p role="status">Este pedido já foi atendido.</p>
+          <div><Link className="button primary" href={`${root}?entrega=${encodeURIComponent(request.delivery.id)}`}>Ver entrega registrada</Link></div>
+        </div>
+      </section>
+    </>;
+    if (requestId && (!request?.equipment || request.status !== "WAITING_DELIVERY")) notFound();
     const today = todayInBrazil();
     const [people, warehouses, stocks, items] = await Promise.all([
       request ? [] : db.employee.findMany({
         where: { ...employeesWhere(scope), active: true, unit: { active: true } },
-        select: { id: true, name: true, unitId: true, unit: { select: { name: true } } }, orderBy: { name: "asc" },
+        select: { id: true, name: true, unitId: true, contractId: true, contractLinks: { select: { warehouseId: true } }, unit: { select: { name: true } } }, orderBy: { name: "asc" },
       }),
       paper ? [] : db.warehouse.findMany({
-        where: { companyId, ...contractStockWhere(scope), active: true, unit: { ...unitsWhere(scope), active: true, ...(request && { id: request.unitId }) } },
+        where: { companyId, ...contractStockWhere(scope), ...(request?.contractId && { AND: [{ id: request.contractId }] }), active: true,
+          unit: { ...unitsWhere(scope), active: true, ...(request && { id: request.unitId }) } },
         orderBy: { name: "asc" }, select: { id: true, name: true, contractNumber: true, unitId: true },
       }),
       paper ? [] : db.stock.findMany({
         where: { companyId, quantity: { gt: 0 },
-          warehouse: { ...contractStockWhere(scope), active: true, unit: { ...unitsWhere(scope), active: true, ...(request && { id: request.unitId }) } },
+          warehouse: { ...contractStockWhere(scope), ...(request?.contractId && { AND: [{ id: request.contractId }] }), active: true,
+            unit: { ...unitsWhere(scope), active: true, ...(request && { id: request.unitId }) } },
           lot: { ...availableLotWhere(today), ...(request?.equipmentId && { equipmentId: request.equipmentId }) } },
         select: { warehouseId: true, quantity: true, lot: { select: { equipment: { select: { id: true, name: true } } } } },
         orderBy: { lot: { equipment: { name: "asc" } } },
       }),
       paper ? db.equipment.findMany({ where: { companyId, active: true }, select: { id: true, name: true }, orderBy: { name: "asc" } }) : [],
     ]);
-    if (paper && employeeId && !people.some(({ id }) => id === employeeId)) notFound();
+    if (!request && employeeId && !people.some(({ id }) => id === employeeId)) notFound();
     const totals = new Map<string, { warehouseId: string; item: typeof items[number]; quantity: number }>();
     for (const { warehouseId, lot: { equipment }, quantity } of stocks) {
       const key = JSON.stringify([warehouseId, equipment.id]);
@@ -576,13 +609,14 @@ export async function Deliveries({ scope, create, requestId, registered, paper =
     return <>
       <Heading title={paper ? "Registrar entregas anteriores" : request ? "Atender pedido" : "Nova entrega"}
         note={paper ? "Registre itens já entregues ao colaborador sem movimentar o estoque." : undefined}
-        action={<Link className="button" href={request ? `/${companyId}/solicitacoes?fila=prontos` : root}>Voltar</Link>} />
+        action={<Link className="button" href={request ? `/${companyId}/solicitacoes?fila=prontos` :
+          create && employeeId ? `/${companyId}/colaboradores` : root}>Voltar</Link>} />
       {canSubmit ? <Editor title={paper ? "Item já entregue" : "Dados da entrega"}>
         <ActionForm action={registerDelivery.bind(null, companyId, randomUUID(), requestId || null, paper)}
           label={paper ? "Salvar e continuar" : request ? "Confirmar entrega" : "Salvar"}
           continueLabel={paper || request ? undefined : "Salvar e continuar"} reset={!request}>
           <DeliveryFields key={employeeId} companyId={companyId} people={people} warehouses={warehouses} stocks={[...totals.values()]} items={items}
-            paper={paper} employeeId={employeeId} today={inputDay(today)} request={request ? {
+            paper={paper} employeeId={employeeId} requireLinkedContract={scope.role === "SUPERVISOR"} today={inputDay(today)} request={request ? {
             name: request.employee.name, equipment: request.equipment!.name, unitId: request.unitId,
             quantity: request.quantity, minDate: inputDay(brazilDay(request.openedAt)),
             itemReturn: request.replacementFor ? {
@@ -599,8 +633,9 @@ export async function Deliveries({ scope, create, requestId, registered, paper =
   }
 
   const filters = deliveryHistoryFilters(query, operator);
+  const deliveryId = operator && typeof query.entrega === "string" ? query.entrega.slice(0, 120) : "";
   const rows = await db.delivery.findMany({
-    where: { AND: [own ? personalDeliveryWhere(scope) : operationalDeliveryWhere(scope), ...filters.where] },
+    where: { AND: [own ? personalDeliveryWhere(scope) : operationalDeliveryWhere(scope), ...filters.where], ...(deliveryId && { id: deliveryId }) },
     include: {
       employee: { select: { id: true, name: true, registration: true } }, equipment: { select: { id: true, name: true, certificate: true } },
       stock: { select: { warehouse: { select: { name: true, contractNumber: true } }, lot: { select: { expiresAt: true } } } },
@@ -615,6 +650,8 @@ export async function Deliveries({ scope, create, requestId, registered, paper =
     orderBy: filters.orderBy,
   });
   const personalRows = own ? rows : [];
+  const personalContracts = own ? await db.warehouse.findMany({ where: { companyId, ...employeeContractsWhere(scope.employee!),
+    active: true, unit: { active: true } }, include: { unit: { select: { name: true } } }, orderBy: { name: "asc" } }) : [];
   const latest = latestByItem(personalRows);
   const latestIds = new Set(latest.map((row) => row.id));
   const confirmedRows = personalRows.filter((row) => row.receipt || !row.warehouseId);
@@ -626,9 +663,12 @@ export async function Deliveries({ scope, create, requestId, registered, paper =
   const today = todayInBrazil();
   const replacement = (row: (typeof rows)[number]) => row.replacementRequests.length ?
     <Link className="text-action" href={`/${companyId}/minhas-solicitacoes`}>Troca solicitada</Link> : row.returnedQuantity >= row.quantity ? null :
-    <details className="record-details personal-item-action">
+    !personalContracts.length ? null : <details className="record-details personal-item-action">
       <summary>Solicitar troca</summary>
       <ActionForm action={requestReplacement.bind(null, companyId, row.id, randomUUID())} label="Enviar pedido de troca">
+        <Choose label="Contrato" name="contract" selected={personalContracts.some(({ id }) => id === row.warehouseId) ? row.warehouseId! :
+          personalContracts.length === 1 ? personalContracts[0].id : ""} values={personalContracts.map((contract) =>
+            ({ id: contract.id, name: `${stockContractLabel(contract)} · ${contract.unit.name}` }))} />
         <label className="field">Quantidade<input name="quantity" type="number" min={1}
           max={row.quantity - row.returnedQuantity} defaultValue={row.quantity - row.returnedQuantity} required /></label>
         <p>Descreva o motivo da troca, anexe uma foto ou envie os dois.</p>
@@ -660,6 +700,7 @@ export async function Deliveries({ scope, create, requestId, registered, paper =
       <h3>{row.equipment.name}</h3>
       <dl>
         <div><dt>Quantidade</dt><dd>{row.quantity - row.returnedQuantity}</dd></div>
+        <div><dt>Contrato</dt><dd>{row.contractNumber ?? (row.stock ? stockContractLabel(row.stock.warehouse) : "Não informado")}</dd></div>
         <div><dt>Data da entrega</dt><dd>{formatDay(row.deliveredAt)}</dd></div>
         {row.stock?.lot.expiresAt && <div><dt>Validade do produto</dt><dd>
           {formatDay(row.stock.lot.expiresAt)} {row.stock.lot.expiresAt < today && <span className="badge deadline-danger">Vencido</span>}
@@ -705,7 +746,7 @@ export async function Deliveries({ scope, create, requestId, registered, paper =
           </select>
         </label>
         <button className="button" type="submit">Aplicar</button>
-        {filters.where.length > 0 || filters.error || filters.order !== "registro-recente" ?
+        {deliveryId || filters.where.length > 0 || filters.error || filters.order !== "registro-recente" ?
           <Link className="button" href={root}>Limpar</Link> : null}
       </form>
       {filters.error && <p className="feedback error operation-feedback" role="alert">{filters.error}</p>}

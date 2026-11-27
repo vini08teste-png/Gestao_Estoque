@@ -12,7 +12,7 @@ import { TeamOverview } from "@/components/team-overview";
 import { sections, Workspace, type Section } from "@/components/workspace";
 import { canAdminister, requireScope, type AccessScope } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { canAddEmployees, canGrantSupervisorAccess, contractStockWhere, employeeHasDependencies, employeeRemovalSelect, employeesWhere, unitsWhere } from "@/lib/directory";
+import { canAddEmployees, canGrantSupervisorAccess, contractIdentity, contractStockWhere, employeeContractLinksSelect, employeeHasDependencies, employeeRemovalSelect, employeesWhere, managedContracts, unitsWhere } from "@/lib/directory";
 import { companyBrands, employeeCompanyName, isCompany, roles } from "@/lib/organization";
 import { passwordLength } from "@/lib/password";
 import type { Role } from "@/generated/prisma/enums";
@@ -130,13 +130,13 @@ async function Employees({ scope, edit, supervisorAccess, query, status, filters
     if (!canGrantSupervisorAccess(scope)) notFound();
     const person = await db.employee.findFirst({
       where: { ...employeesWhere(scope), id: supervisorAccess, active: true },
-      select: { id: true, name: true, contractId: true, unit: { select: { name: true } }, scope: { select: { active: true, role: true } } },
+      select: { id: true, name: true, contractId: true, contractLinks: { select: { manages: true } }, unit: { select: { name: true } }, scope: { select: { active: true, role: true } } },
     });
     if (!person) notFound();
     return <>
       <Heading title="Acesso de Gerência" description={`${person.name} · ${person.unit.name}`} />
       <Editor title="Perfil de acesso" base={base}>
-        {!person.contractId ? (
+        {!person.contractId && !person.contractLinks.some(({ manages }) => manages) ? (
           <p className="empty">Vincule o colaborador a um contrato antes de conceder acesso de Gerência.</p>
         ) : person.scope?.active && person.scope.role === "SUPERVISOR" ? (
           <p className="empty" role="status">Acesso de Gerência ativo.</p>
@@ -160,16 +160,18 @@ async function Employees({ scope, edit, supervisorAccess, query, status, filters
   if (edit) {
     if (!(edit === "novo" ? canCreate : admin)) notFound();
     const [current, units, contracts] = await Promise.all([
-      edit === "novo" ? null : db.employee.findUnique({ where: { companyId_id: { companyId, id: edit } } }),
+      edit === "novo" ? null : db.employee.findUnique({ where: { companyId_id: { companyId, id: edit } }, include: { contractLinks: true } }),
       db.unit.findMany({ where: unitsWhere(scope), orderBy: { name: "asc" } }),
       db.warehouse.findMany({
         where: { companyId, ...contractStockWhere(scope), unit: unitsWhere(scope), OR: [
           { active: true, contractNumber: { not: null } },
           ...(edit === "novo" ? [] : [{ employees: { some: { id: edit } } }]),
+          ...(edit === "novo" ? [] : [{ employeeLinks: { some: { employeeId: edit } } }]),
         ] },
         select: { id: true, unitId: true, contractNumber: true }, orderBy: { contractNumber: "asc" },
       }),
     ]);
+    const soleManaged = scope.role === "SUPERVISOR" && contracts.length === 1 ? contracts[0] : undefined;
     if (edit !== "novo" && !current) notFound();
     return (
       <>
@@ -186,8 +188,10 @@ async function Employees({ scope, edit, supervisorAccess, query, status, filters
                     maxLength={120} placeholder={scope.company.name} aria-describedby="employee-company-help" />
                   <small id="employee-company-help">Deixe em branco para usar {scope.company.name}. Para terceirizados, informe a empresa empregadora, como LUK.</small>
                 </div>
-                <EmployeeContractFields units={units} contracts={contracts} initialUnit={current?.unitId ?? (scope.role === "SUPERVISOR" ? scope.employee?.unitId : undefined) ?? ""}
-                  initialContract={current?.contractId ?? (scope.role === "SUPERVISOR" ? scope.employee?.contractId : undefined) ?? ""} fixedContract={scope.role === "SUPERVISOR"} />
+                <EmployeeContractFields units={units} contracts={contracts} initialUnit={current?.unitId ?? soleManaged?.unitId ?? ""}
+                  initialContract={current?.contractId ?? soleManaged?.id ?? ""} fixedContract={Boolean(soleManaged)}
+                  links={admin ? (current?.contractLinks.length ? current.contractLinks :
+                    current?.contractId ? [{ warehouseId: current.contractId, manages: true }] : []) : undefined} />
                 <TextField name="jobTitle" label="Função" value={current?.jobTitle} />
               </div>
               <ActiveField active={current?.active} />
@@ -208,7 +212,7 @@ async function Employees({ scope, edit, supervisorAccess, query, status, filters
         ...(scope.company.name.toLocaleLowerCase("pt-BR").includes(query.toLocaleLowerCase("pt-BR")) ? [{ contractorCompany: null }] : []),
       ] } : {}),
     },
-    include: { unit: { select: { name: true } }, contract: { select: { contractNumber: true } },
+    include: { unit: { select: { name: true } }, contract: { select: contractIdentity }, contractLinks: { select: employeeContractLinksSelect },
       scope: { select: { userId: true, role: true, active: true } } },
     orderBy: { name: "asc" },
   });
@@ -229,12 +233,15 @@ async function Employees({ scope, edit, supervisorAccess, query, status, filters
           <button className="button" type="submit">Filtrar</button>
         </form>
       )}
-      {scope.role === "SUPERVISOR" && !scope.employee?.contractId && <p className="feedback">Peça a um administrador para vincular seu cadastro a um contrato.</p>}
+      {scope.role === "SUPERVISOR" && !managedContracts(scope).length && <p className="feedback">Peça a um administrador para vincular seu cadastro a um contrato.</p>}
       {team ? <TeamOverview scope={scope} people={people} search={query} status={status} filters={filters} /> :
       <Table label={title} columns={["Matrícula", "Nome", "Empresa", "Unidade", "Contrato", "Função", "Situação", ...(admin ? ["Ação"] : [])]}
-        rows={people.map((person) => [person.id, person.registration, person.name, employeeCompanyName(scope.company.name, person.contractorCompany), person.unit.name, person.contract?.contractNumber ?? "—",
+        rows={people.map((person) => [person.id, person.registration, person.name, employeeCompanyName(scope.company.name, person.contractorCompany), person.unit.name,
+          [...new Set([person.contract?.contractNumber, ...person.contractLinks.map(({ warehouse }) => warehouse.contractNumber)].filter(Boolean))].join(", ") || "—",
           person.jobTitle, <Status active={person.active} />,
           ...(admin ? [<RowActions id={`employee-actions-${person.id}`} label={`Ações de ${person.name}`}>
+              {person.active && <Link className="text-action" aria-label={`Registrar entrega para ${person.name}`}
+                href={`/${companyId}/entregas?edit=novo&colaborador=${encodeURIComponent(person.id)}`}>Registrar entrega</Link>}
               <EditLink base={base} id={person.id} label={person.name} />
               <Link className="text-action" aria-label={`Configurar acesso de ${person.name}`}
                 href={`/${companyId}/usuarios?${person.scope ? `edit=${encodeURIComponent(person.scope.userId)}` :
@@ -407,7 +414,7 @@ export default async function CompanyPage({ params, searchParams }: {
     entregas: <Deliveries scope={scope} query={search} create={edit === "novo"} paper={edit === "ficha"}
       correction={edit !== "novo" && edit !== "ficha" ? edit : ""}
       remove={typeof search.apagar === "string" ? search.apagar : ""}
-      employeeId={(edit === "ficha" || search.registrada === "ficha") && typeof search.colaborador === "string" ? search.colaborador : ""}
+      employeeId={(edit === "novo" || edit === "ficha" || search.registrada === "ficha") && typeof search.colaborador === "string" ? search.colaborador : ""}
       requestId={typeof search.solicitacao === "string" ? search.solicitacao : ""}
       registered={typeof search.registrada === "string" && ["ficha", "1", "editada", "apagada"].includes(search.registrada) ? search.registrada : ""} />,
     solicitacoes: <Requests scope={scope} edit={edit} status={typeof search.status === "string" ? search.status : ""}

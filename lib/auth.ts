@@ -35,7 +35,8 @@ export const loadViewer = cache(async () => {
             include: {
               company: true,
               units: { select: { unitId: true } },
-              employee: { select: { id: true, unitId: true, contractId: true, active: true } },
+              employee: { select: { id: true, unitId: true, contractId: true, active: true,
+                contractLinks: { select: { warehouseId: true, manages: true } } } },
             },
           },
         },

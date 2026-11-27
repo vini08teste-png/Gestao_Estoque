@@ -46,9 +46,9 @@ A [documentação do sistema](docs/README.md) detalha o comportamento implementa
 10. Relatórios de entregas, pendências, vencimentos e ficha individual de EPI, com filtros por empresa e unidade.
 
 ## 6. Regras de negócio
-- Cada colaborador pertence a uma empresa e unidade; matrícula única no escopo da empresa.
+- Cada colaborador pertence a uma empresa e tem uma unidade de cadastro. A matrícula é única por empresa, e o cadastro pode ser vinculado a vários contratos.
 - A empresa terceirizada identifica o empregador. O administrador ou o gestor da unidade pode conceder a um colaborador terceirizado o perfil Gerência na unidade em que atua.
-- Cada contrato de estoque pertence a uma unidade. Várias pessoas com o perfil Gerência podem operar o mesmo contrato. O campo Função registra o cargo da pessoa.
+- Cada contrato de estoque pertence a uma unidade. O perfil Gerência opera os contratos em que essa permissão foi atribuída. Uma pessoa pode trabalhar como colaboradora em outro contrato. O campo Função registra o cargo da pessoa.
 - A baixa de estoque e o registro da entrega ocorrem em uma transação atômica que impede estoque negativo. A confirmação de recebimento é feita depois pelo destinatário.
 - Nova entrega de substituição acrescenta um registro ao histórico.
 - O destinatário confirma o recebimento. O sistema registra quem confirmou e quando.
@@ -61,7 +61,7 @@ A [documentação do sistema](docs/README.md) detalha o comportamento implementa
 - O estoque baixo usa o limite por item e unidade, com padrão de cinco unidades disponíveis. O saldo disponível soma as entradas válidas e liberadas de cada contrato ativo. O controle das entradas usa lotes internos. A fila informa quando falta saldo para atender a quantidade pedida.
 - Solicitação com aprovação: `pendente_aprovacao -> aguardando_entrega -> concluida`; rejeição com justificativa.
 - Solicitação sem aprovação: `aguardando_entrega -> concluida`.
-- Uma solicitação por item. O atendimento é integral, e pedidos em aberto podem ser cancelados.
+- Uma solicitação por item e contrato. O atendimento é integral e só pode ser concluído uma vez. Pedidos em aberto podem ser cancelados.
 - Entrega direta por operador autorizado continua permitida.
 - O administrador pode editar ou apagar registros no Histórico mediante justificativa. A exclusão mantém o registro para auditoria e estorna a baixa, quando houver.
 - Anexos de comprovantes devem ser vinculados à entrega, protegidos por autorização e integridade.

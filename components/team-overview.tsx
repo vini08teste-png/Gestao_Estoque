@@ -5,12 +5,12 @@ import { TeamMemberTabs } from "@/components/team-member-tabs";
 import type { Role } from "@/generated/prisma/enums";
 import type { AccessScope } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { canGrantSupervisorAccess } from "@/lib/directory";
-import { operationalDeliveryWhere, requestWhere } from "@/lib/equipment-access";
+import { canGrantSupervisorAccess, managedContracts } from "@/lib/directory";
+import { requestWhere } from "@/lib/equipment-access";
 import { brazilDay, formatDay, itemsInUse, jobTitleKey, latestByItem, plusDays, requestLabels, todayInBrazil } from "@/lib/equipment";
 import { historicalReceiptLabel } from "@/lib/receipt-signature";
-import { openRequestStatuses, type Query } from "@/lib/reporting";
-import { employeeCompanyName } from "@/lib/organization";
+import { openRequestStatuses, unitDeliveryWhere, type Query } from "@/lib/reporting";
+import { employeeCompanyName, stockContractLabel } from "@/lib/organization";
 
 type TeamMember = {
   id: string;
@@ -20,11 +20,14 @@ type TeamMember = {
   unitId: string;
   unit: { name: string };
   contractId: string | null;
-  contract: { contractNumber: string | null } | null;
+  contract: TeamContract | null;
+  contractLinks: { manages: boolean; warehouse: TeamContract }[];
   jobTitle: string;
   scope: { role: Role; active: boolean } | null;
   active: boolean;
 };
+
+type TeamContract = { id: string; unitId: string; contractNumber: string | null; unit: { name: string } };
 
 const pendingOptions = {
   confirmacao: "Recebimentos a confirmar",
@@ -75,43 +78,63 @@ export async function TeamOverview({ scope, people, search, status, filters }: {
   const base = `/${scope.companyId}/colaboradores`;
   const sortedValues = (entries: [string, string][]) =>
     [...new Map(entries)].sort(([, a], [, b]) => a.localeCompare(b, "pt-BR"));
-  const units = sortedValues(people.map((person) => [person.unitId, person.unit.name]));
-  const contracts = sortedValues(people.flatMap(({ contractId, contract }) =>
-    contractId && contract?.contractNumber ? [[contractId, contract.contractNumber]] : []));
-  if (people.some(({ contract }) => !contract?.contractNumber)) contracts.push(["sem-contrato", "Sem contrato"]);
+  const managedIds = scope.role === "SUPERVISOR" ? new Set(managedContracts(scope)) : null;
+  const unitIds = scope.allUnits ? null : new Set(scope.units.map(({ unitId }) => unitId));
+  const linksFor = (person: TeamMember) => [...new Map([
+    ...(person.contract ? [[person.contract.id, person.contract] as const] : []),
+    ...person.contractLinks.map(({ warehouse }) => [warehouse.id, warehouse] as const),
+  ]).values()].filter(({ id, unitId }) => managedIds ? managedIds.has(id) : !unitIds || unitIds.has(unitId));
+  const units = sortedValues(people.flatMap<[string, string]>((person) => {
+    const links = linksFor(person);
+    return links.length ? links.map((link): [string, string] => [link.unitId, link.unit.name]) : [[person.unitId, person.unit.name]];
+  }));
+  const contracts = sortedValues(people.flatMap((person) => linksFor(person).flatMap<[string, string]>((link) =>
+    link.contractNumber ? [[link.id, link.contractNumber]] : [])));
+  if (people.some((person) => !linksFor(person).some(({ contractNumber }) => contractNumber))) contracts.push(["sem-contrato", "Sem contrato"]);
   const selected = (key: string, options: [string, string][]) =>
     options.find(([id]) => id === filters[key])?.[0] ?? "";
   const unit = selected("unidade", units);
   const contract = selected("contrato", contracts);
   const pending = typeof filters.pendencia === "string" && Object.hasOwn(pendingOptions, filters.pendencia) ? filters.pendencia : "";
   const needle = search.toLocaleLowerCase("pt-BR");
-  const scopedPeople = people.filter((person) =>
-    (!status || person.active === (status === "ativo")) &&
-    (!unit || person.unitId === unit) && (!contract || (person.contract?.contractNumber ? person.contractId : "sem-contrato") === contract) &&
+  const scopedPeople = people.filter((person) => {
+    const links = linksFor(person);
+    const matchesContract = links.some((link) => (!unit || link.unitId === unit) && (!contract || link.id === contract));
+    const legacy = !links.some(({ contractNumber }) => contractNumber) && (!unit || person.unitId === unit) && (!contract || contract === "sem-contrato");
+    return (!status || person.active === (status === "ativo")) && (matchesContract || legacy) &&
     (!needle || [person.name, person.registration, employeeCompanyName(scope.company.name, person.contractorCompany)]
-      .some((value) => value.toLocaleLowerCase("pt-BR").includes(needle))));
+      .some((value) => value.toLocaleLowerCase("pt-BR").includes(needle)));
+  });
+  const ruleUnits = (person: TeamMember) => {
+    const ids = linksFor(person).filter((link) => (!unit || unit === link.unitId) && (!contract || contract === link.id)).map((link) => link.unitId);
+    return ids.length ? [...new Set(ids)] : [person.unitId];
+  };
   const employeeId = { in: scopedPeople.map(({ id }) => id) };
   const [deliveries, requests, expected] = await Promise.all(scopedPeople.length ? [
     db.delivery.findMany({
-      where: { ...operationalDeliveryWhere(scope), employeeId },
+      where: { employeeId, AND: [unitDeliveryWhere(scope, unit), ...(contract ? [contract === "sem-contrato" ?
+        { warehouseId: null, historicalContractId: null } : { OR: [{ warehouseId: contract }, { historicalContractId: contract }] }] : [])] },
       select: {
-        id: true, employeeId: true, equipmentId: true, quantity: true, returnedQuantity: true, warehouseId: true, deliveredAt: true,
-        equipment: { select: { name: true, caExpiresAt: true } }, stock: { select: { lot: { select: { expiresAt: true } } } },
+        id: true, employeeId: true, equipmentId: true, quantity: true, returnedQuantity: true, warehouseId: true,
+        historicalContractId: true, contractNumber: true, deliveredAt: true,
+        equipment: { select: { name: true, caExpiresAt: true } }, stock: { select: { lot: { select: { expiresAt: true } },
+          warehouse: { select: { name: true, contractNumber: true } } } },
         receipt: { select: { historical: true } }, retirement: { select: { deliveryId: true } },
       },
       orderBy: [{ deliveredAt: "desc" }, { createdAt: "desc" }, { id: "desc" }],
     }),
     db.equipmentRequest.findMany({
-      where: { ...requestWhere(scope), employeeId, status: { in: [...openRequestStatuses()] } },
+      where: { ...requestWhere(scope), employeeId, status: { in: [...openRequestStatuses()] }, ...(unit && { unitId: unit }),
+        ...(contract && { contractId: contract === "sem-contrato" ? null : contract }) },
       select: {
         id: true, employeeId: true, requestedItem: true, quantity: true, status: true, openedAt: true,
-        equipment: { select: { name: true } },
+        equipment: { select: { name: true } }, contract: { select: { name: true, contractNumber: true } },
       },
       orderBy: [{ openedAt: "desc" }, { id: "desc" }],
     }),
     db.expectedItem.findMany({
       where: { companyId: scope.companyId, equipment: { active: true },
-        OR: [{ unitId: null }, { unitId: { in: [...new Set(scopedPeople.map(({ unitId }) => unitId))] } }] },
+        OR: [{ unitId: null }, { unitId: { in: [...new Set(scopedPeople.flatMap(ruleUnits))] } }] },
       select: { unitId: true, jobTitle: true, equipmentId: true, quantity: true, equipment: { select: { name: true } } },
       orderBy: { equipment: { name: "asc" } },
     }),
@@ -127,7 +150,7 @@ export async function TeamOverview({ scope, people, search, status, filters }: {
     const waiting = delivered.filter(({ receipt, retirement, warehouseId, returnedQuantity, quantity }) =>
       warehouseId && !receipt && !retirement && returnedQuantity < quantity);
     const open = requestsByPerson.get(person.id) ?? [];
-    const unitRules = [...(expectedByUnit.get(null) ?? []), ...(expectedByUnit.get(person.unitId) ?? [])];
+    const unitRules = [...(expectedByUnit.get(null) ?? []), ...ruleUnits(person).flatMap((id) => expectedByUnit.get(id) ?? [])];
     const byItem = new Map<string, (typeof expected)[number]>();
     if (person.active) {
       const job = jobTitleKey(person.jobTitle);
@@ -140,7 +163,10 @@ export async function TeamOverview({ scope, people, search, status, filters }: {
     for (const { equipmentId, quantity, returnedQuantity } of current) {
       inUse.set(equipmentId, (inUse.get(equipmentId) ?? 0) + quantity - returnedQuantity);
     }
-    const toConfirm = new Map(latestByItem(waiting).map((row) => [row.equipmentId, row.quantity - row.returnedQuantity]));
+    const toConfirm = new Map<string, number>();
+    for (const row of latestByItem(waiting)) {
+      toConfirm.set(row.equipmentId, (toConfirm.get(row.equipmentId) ?? 0) + row.quantity - row.returnedQuantity);
+    }
     const checklist = [...byItem.values()].sort((a, b) => a.equipment.name.localeCompare(b.equipment.name, "pt-BR")).map((rule) => {
       const confirmed = inUse.get(rule.equipmentId) ?? 0;
       const waiting = toConfirm.get(rule.equipmentId) ?? 0;
@@ -172,7 +198,8 @@ export async function TeamOverview({ scope, people, search, status, filters }: {
   ];
   const deliveryTable = (rows: typeof deliveries, confirmation: boolean) => <TeamTable label={confirmation ? "Recebimentos a confirmar" : "Itens em uso"}
     columns={["Item", "Qtd.", "Data da entrega", "Validade do equipamento", "Validade do CA", "Situação"]}
-    rows={rows.map((row) => [row.id, row.equipment.name, row.quantity - row.returnedQuantity, formatDay(row.deliveredAt),
+    rows={rows.map((row) => [row.id, <>{row.equipment.name}<br /><small>{row.contractNumber ??
+      (row.stock ? stockContractLabel(row.stock.warehouse) : "Contrato não informado")}</small></>, row.quantity - row.returnedQuantity, formatDay(row.deliveredAt),
       <Validity value={row.stock?.lot.expiresAt ?? null} today={today} deadline={deadline} />,
       <Validity value={row.equipment.caExpiresAt} today={today} deadline={deadline} />,
       confirmation ? <span className="badge deadline-warning">A confirmar</span> :
@@ -207,7 +234,9 @@ export async function TeamOverview({ scope, people, search, status, filters }: {
     </form>
     {members.length ? <div className="team-list">{members.map(({ person, current, waiting, open, checklist, validity, configured, unitsInUse, missing }) => {
       const supervisorAccess = person.scope?.active && person.scope.role === "SUPERVISOR";
-      const canGrant = Boolean(person.contractId) && canGrantSupervisorAccess(scope) && (!person.scope || (person.scope.active && person.scope.role === "EMPLOYEE"));
+      const canGrant = Boolean(person.contractId || person.contractLinks.some(({ manages }) => manages)) && canGrantSupervisorAccess(scope) &&
+        (!person.scope || (person.scope.active && person.scope.role === "EMPLOYEE"));
+      const teamContracts = linksFor(person);
       const expectedEmpty = !person.active ? "O acompanhamento de itens esperados se aplica aos colaboradores ativos." :
         configured ? "Nenhum item esperado para esta função pelas regras cadastradas." : "Itens esperados ainda não configurados para esta unidade.";
       return <details className="panel team-member" key={person.id}>
@@ -225,7 +254,8 @@ export async function TeamOverview({ scope, people, search, status, filters }: {
           <Icon name="expand_more" />
         </summary>
         <div className="team-member-role">
-          <p>{person.unit.name} · {person.contract?.contractNumber ?? "Sem contrato"}
+          <p>{teamContracts.map((link) => `${link.unit.name} · ${link.contractNumber ?? "Contrato não informado"}`).join(" / ") ||
+            `${person.unit.name} · Sem contrato`}
             {" · "}{employeeCompanyName(scope.company.name, person.contractorCompany)}{supervisorAccess && " · Perfil Gerência"}</p>
           {person.active && <details className="team-actions">
             <summary className="button" aria-label={`Ações de ${person.name}`} title="Ações"><span aria-hidden="true">⋯</span></summary>
@@ -241,7 +271,8 @@ export async function TeamOverview({ scope, people, search, status, filters }: {
             { label: "Em uso", content: deliveryTable(current, false) },
             { label: "A confirmar", content: deliveryTable(waiting, true) },
             { label: "Pedidos em aberto", content: <TeamTable label="Pedidos em aberto" columns={["Item", "Qtd.", "Data do pedido", "Situação"]}
-              rows={open.map((item) => [item.id, item.equipment?.name ?? item.requestedItem ?? missingValue, item.quantity,
+              rows={open.map((item) => [item.id, <>{item.equipment?.name ?? item.requestedItem ?? missingValue}<br />
+                <small>{item.contract ? stockContractLabel(item.contract) : "Contrato não informado"}</small></>, item.quantity,
                 formatDay(brazilDay(item.openedAt)), requestLabels[item.status]])} empty="Nenhum pedido em aberto." /> },
             { label: "Itens esperados", content: <TeamTable label="Itens esperados" columns={["Item", "Qtd. esperada", "Em uso", "A confirmar", "Situação"]}
               rows={checklist.map((item) => [item.equipmentId, item.equipment.name, item.quantity, item.confirmed, item.waiting,

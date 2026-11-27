@@ -66,6 +66,7 @@ model Employee {
   scope        UserScope?
   deliveries  Delivery[]
   requests    EquipmentRequest[]
+  contractLinks EmployeeContract[]
 
   @@id([companyId, id])
   @@unique([companyId, registration])
@@ -87,6 +88,18 @@ model User {
   receipts    DeliveryReceipt[]
   retirements DeliveryRetirement[]
   deliveryReturns DeliveryReturn[]
+}
+
+model EmployeeContract {
+  companyId   String
+  employeeId  String
+  warehouseId String
+  manages     Boolean @default(false)
+  employee    Employee @relation(fields: [companyId, employeeId], references: [companyId, id], onDelete: Cascade, map: "EmployeeContract_employee_fkey")
+  warehouse   Warehouse @relation(fields: [companyId, warehouseId], references: [companyId, id], onDelete: Restrict, map: "EmployeeContract_warehouse_fkey")
+
+  @@id([companyId, employeeId, warehouseId])
+  @@index([companyId, warehouseId])
 }
 
 model UserScope {
@@ -205,6 +218,9 @@ model Warehouse {
   unit      Unit @relation(fields: [companyId, unitId], references: [companyId, id], onDelete: Restrict)
   stocks    Stock[]
   employees Employee[]
+  employeeLinks EmployeeContract[]
+  requests EquipmentRequest[]
+  historicalDeliveries Delivery[] @relation("HistoricalContract")
 
   @@id([companyId, id])
   @@unique([companyId, unitId, id])
@@ -285,6 +301,7 @@ model EquipmentRequest {
   id          String
   employeeId  String
   unitId      String
+  contractId  String?
   equipmentId String?
   requestedItem String?
   quantity    Int
@@ -296,6 +313,7 @@ model EquipmentRequest {
   replacementForId String?
   employee    Employee @relation(fields: [companyId, employeeId], references: [companyId, id], onDelete: Restrict)
   unit        Unit @relation(fields: [companyId, unitId], references: [companyId, id], onDelete: Restrict)
+  contract    Warehouse? @relation(fields: [companyId, unitId, contractId], references: [companyId, unitId, id], onDelete: Restrict, onUpdate: Restrict)
   equipment   Equipment? @relation(fields: [companyId, equipmentId], references: [companyId, id], onDelete: Restrict)
   delivery    Delivery?
   replacementFor Delivery? @relation("ReplacementFor", fields: [companyId, replacementForId], references: [companyId, id], onDelete: Restrict)
@@ -306,6 +324,7 @@ model EquipmentRequest {
   @@index([companyId, unitId, status])
   @@index([companyId, employeeId, openedAt])
   @@index([companyId, replacementForId])
+  @@index([companyId, contractId, status])
 }
 
 model Delivery {
@@ -321,6 +340,7 @@ model Delivery {
   returnedQuantity Int @default(0)
   deliveredAt    DateTime @db.Date
   contractNumber String? @db.VarChar(120)
+  historicalContractId String?
   suggestedAt    DateTime? @db.Date
   replacementAt  DateTime? @db.Date
   adjustmentNote String?
@@ -329,6 +349,7 @@ model Delivery {
   employee       Employee @relation(fields: [companyId, employeeId], references: [companyId, id], onDelete: Restrict)
   equipment      Equipment @relation(fields: [companyId, equipmentId], references: [companyId, id], onDelete: Restrict)
   stock          Stock? @relation(fields: [companyId, warehouseId, lotId], references: [companyId, warehouseId, lotId], onDelete: Restrict)
+  historicalContract Warehouse? @relation("HistoricalContract", fields: [companyId, historicalContractId], references: [companyId, id], onDelete: Restrict)
   actor          User @relation(fields: [actorId], references: [id], onDelete: Restrict)
   request        EquipmentRequest? @relation(fields: [companyId, requestId], references: [companyId, id], onDelete: Restrict)
   movements      StockMovement[]
@@ -341,6 +362,7 @@ model Delivery {
   @@id([companyId, id])
   @@unique([companyId, requestId])
   @@index([companyId, employeeId, equipmentId, deliveredAt, createdAt])
+  @@index([companyId, historicalContractId])
 }
 
 model DeliveryReturn {

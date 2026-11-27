@@ -101,7 +101,8 @@ export function deadlineStatus(row: Deadline, today: Date, thresholds: number[])
 export function unitDeliveryWhere(scope: AccessScope, unit = "", personal = false): Prisma.DeliveryWhereInput {
   if (personal || scope.role === "EMPLOYEE") return personalDeliveryWhere(scope);
   const access = operationalDeliveryWhere(scope);
-  return unit ? { AND: [access, { OR: [{ stock: { warehouse: { unitId: unit } } }, { warehouseId: null, employee: { unitId: unit } }] }] } : access;
+  return unit ? { AND: [access, { OR: [{ stock: { warehouse: { unitId: unit } } }, { historicalContract: { unitId: unit } },
+    { warehouseId: null, historicalContractId: null, employee: { unitId: unit } }] }] } : access;
 }
 
 export function unitRequestWhere(scope: AccessScope, unit = "", personal = false): Prisma.EquipmentRequestWhereInput {
@@ -157,6 +158,7 @@ function deliveredItems(scope: AccessScope, filters: Filters, kind: ReportKind |
       employee: { select: { name: true, registration: true, unit: { select: { name: true } } } },
       equipment: { select: { name: true, certificate: true } },
       stock: { select: { warehouse: { select: { contractNumber: true, unit: { select: { name: true } } } } } },
+      historicalContract: { select: { unit: { select: { name: true } } } },
       receipt: { select: { historical: true, verificationCode: true } },
       returns: { select: { returnedAt: true }, orderBy: { returnedAt: "asc" } },
     },
@@ -204,7 +206,7 @@ export async function reportRows(scope: AccessScope, kind: ReportKind, filters: 
   if (kind === "entregas") return {
     columns: ["Colaborador", ...deliveryReportColumns, "Empresa", "Unidade", "Recebimento"],
     rows: deliveries.map((row) => [
-      row.employee, ...deliveryCells(row), company, row.stock?.warehouse.unit.name ?? row.employee.unit.name,
+      row.employee, ...deliveryCells(row), company, row.stock?.warehouse.unit.name ?? row.historicalContract?.unit.name ?? row.employee.unit.name,
       row.returnedQuantity === row.quantity ? "Devolvido para descarte" :
         row.receipt?.historical ? historicalReceiptLabel : row.receipt ? "Confirmado" :
           !row.stock ? "Entrega anterior" : "Aguardando confirmação",
@@ -223,7 +225,7 @@ export async function reportRows(scope: AccessScope, kind: ReportKind, filters: 
       equipment: row.equipment?.name ?? row.requestedItem ?? "", quantity: row.quantity, status: requestLabels[row.status],
     })),
     ...deliveries.map((row) => ({
-      date: row.deliveredAt, type: "Recebimento", unit: row.stock?.warehouse.unit.name ?? row.employee.unit.name, employee: row.employee,
+      date: row.deliveredAt, type: "Recebimento", unit: row.stock?.warehouse.unit.name ?? row.historicalContract?.unit.name ?? row.employee.unit.name, employee: row.employee,
       equipment: row.equipment.name, quantity: row.quantity, status: "Aguardando confirmação",
     })),
   ];

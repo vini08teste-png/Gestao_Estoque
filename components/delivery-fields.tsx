@@ -5,12 +5,12 @@ import { DeliveryProofField } from "@/components/delivery-proof-field";
 import { EquipmentPicker } from "@/components/equipment-picker";
 import { contractNumberLabel, stockContractLabel } from "@/lib/organization";
 
-type Person = { id: string; name: string; unitId: string; unit: { name: string } };
+type Person = { id: string; name: string; unitId: string; contractId: string | null; unit: { name: string }; contractLinks: { warehouseId: string }[] };
 type Warehouse = { id: string; name: string; contractNumber: string | null; unitId: string };
 type Item = { id: string; name: string };
 type StockOption = { warehouseId: string; item: Item; quantity: number };
 
-export function DeliveryFields({ companyId, people, warehouses, stocks, items, today, request, paper, employeeId }: {
+export function DeliveryFields({ companyId, people, warehouses, stocks, items, today, request, paper, employeeId, requireLinkedContract }: {
   companyId: string;
   people: Person[];
   warehouses: Warehouse[];
@@ -21,6 +21,7 @@ export function DeliveryFields({ companyId, people, warehouses, stocks, items, t
     itemReturn?: { equipment: string; earliest: string; recordedDate?: string } };
   paper: boolean;
   employeeId: string;
+  requireLinkedContract: boolean;
 }) {
   const [person, setPerson] = useState(employeeId || (people.length === 1 ? people[0].id : ""));
   const [selectedWarehouse, setWarehouse] = useState("");
@@ -30,11 +31,15 @@ export function DeliveryFields({ companyId, people, warehouses, stocks, items, t
   const personFieldId = useId();
   const warehouseFieldId = useId();
   const itemFieldId = useId();
-  const unit = request?.unitId ?? people.find(({ id }) => id === person)?.unitId;
-  const unitWarehouses = warehouses.filter(({ unitId }) => unitId === unit);
+  const recipient = people.find(({ id }) => id === person);
+  const unit = request?.unitId ?? recipient?.unitId;
+  const unitWarehouses = warehouses.filter(({ unitId, id }) => recipient && (requireLinkedContract || recipient.contractLinks.length)
+    ? recipient.contractId === id || recipient.contractLinks.some(({ warehouseId }) => warehouseId === id)
+    : unitId === unit);
   const warehouseBalances = new Map(stocks.map(({ warehouseId, quantity }) => [warehouseId, quantity]));
   const defaultWarehouses = request ? unitWarehouses.filter(({ id }) => (warehouseBalances.get(id) ?? 0) >= request.quantity) : unitWarehouses;
-  const warehouse = selectedWarehouse || (defaultWarehouses.length === 1 ? defaultWarehouses[0].id : "");
+  const preferredWarehouse = defaultWarehouses.find(({ id }) => id === recipient?.contractId)?.id;
+  const warehouse = selectedWarehouse || preferredWarehouse || (defaultWarehouses.length === 1 ? defaultWarehouses[0].id : "");
   const warehouseStock = stocks.filter(({ warehouseId }) => warehouseId === warehouse);
   const itemOptions = warehouseStock.map(({ item }) => item);
   const itemId = selectedItem || (itemOptions.length === 1 ? itemOptions[0].id : "");

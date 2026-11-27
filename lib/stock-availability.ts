@@ -8,6 +8,7 @@ import { todayInBrazil } from "@/lib/equipment";
 
 export const defaultStockMinimum = 5;
 export const stockKey = (unitId: string, equipmentId: string) => JSON.stringify([unitId, equipmentId]);
+export const contractBalanceKey = (contractId: string, equipmentId: string) => JSON.stringify(["contract", contractId, equipmentId]);
 
 export function availableLotWhere(today: Date): Prisma.EquipmentLotWhereInput {
   return { blocked: false, equipment: { active: true }, OR: [{ expiresAt: null }, { expiresAt: { gte: today } }] };
@@ -20,9 +21,9 @@ type StockBalance = {
   largestWarehouse: number;
 };
 
-export async function stockBalances(scope: AccessScope, unitIds: string[] = [], equipmentIds: string[] = [], personal = false) {
+export async function stockBalances(scope: AccessScope, unitIds: string[] = [], equipmentIds: string[] = [], personal = false, byContract = false) {
   const today = todayInBrazil();
-  const unitAccess = personal ? { id: scope.employee?.unitId ?? "" } : unitsWhere(scope);
+  const unitAccess = personal ? { id: { in: unitIds.length ? unitIds : [scope.employee?.unitId ?? ""] } } : unitsWhere(scope);
   const rows = await db.stock.findMany({
     where: {
       companyId: scope.companyId,
@@ -51,6 +52,10 @@ export async function stockBalances(scope: AccessScope, unitIds: string[] = [], 
       balance.largestWarehouse = Math.max(balance.largestWarehouse, quantity);
     }
     balances.set(key, balance);
+    if (byContract) {
+      const quantity = warehouseTotals.get(JSON.stringify([row.warehouseId, equipment.id])) ?? 0;
+      balances.set(contractBalanceKey(row.warehouseId, equipment.id), { ...balance, quantity, largestWarehouse: quantity });
+    }
   }
   return balances;
 }
@@ -79,19 +84,21 @@ export async function stockDemand(scope: AccessScope, unitId = "") {
   const requests = await db.equipmentRequest.findMany({
     where: { AND: [requestWhere(scope), { unit: { active: true }, employee: { active: true },
       ...(unitId && { unitId }), status: "WAITING_DELIVERY", equipment: { active: true } }] },
-    select: { unitId: true, unit: { select: { name: true } }, equipment: { select: { id: true, name: true } }, quantity: true },
+    select: { unitId: true, contractId: true, contract: { select: { contractNumber: true } }, unit: { select: { name: true } },
+      equipment: { select: { id: true, name: true } }, quantity: true },
   });
   if (!requests.length) return [];
   const totals = new Map<string, { unit: string; equipment: string; requested: number }>();
   for (const row of requests) {
     if (!row.equipment) continue;
-    const key = stockKey(row.unitId, row.equipment.id);
-    const total = totals.get(key) ?? { unit: row.unit.name, equipment: row.equipment.name, requested: 0 };
+    const key = row.contractId ? contractBalanceKey(row.contractId, row.equipment.id) : stockKey(row.unitId, row.equipment.id);
+    const unit = row.contract?.contractNumber ? `${row.unit.name} · ${row.contract.contractNumber}` : row.unit.name;
+    const total = totals.get(key) ?? { unit, equipment: row.equipment.name, requested: 0 };
     total.requested += row.quantity;
     totals.set(key, total);
   }
   const stock = await stockBalances(scope, [...new Set(requests.map(({ unitId }) => unitId))],
-    [...new Set(requests.flatMap(({ equipment }) => equipment ? [equipment.id] : []))]);
+    [...new Set(requests.flatMap(({ equipment }) => equipment ? [equipment.id] : []))], false, true);
   return [...totals].map(([id, row]) => {
     const available = stock.get(id)?.quantity ?? 0;
     return { id, ...row, available, missing: Math.max(0, row.requested - available) };
@@ -99,9 +106,10 @@ export async function stockDemand(scope: AccessScope, unitId = "") {
     a.equipment.localeCompare(b.equipment, "pt-BR"));
 }
 
-export function requestAvailability(balance: StockBalance | undefined, requested: number) {
+export function requestAvailability(balance: StockBalance | undefined, requested: number, byContract = false) {
   const quantity = balance?.quantity ?? 0;
-  if ((balance?.largestWarehouse ?? 0) >= requested) return { ready: true, label: "Disponível em estoque", tone: "active", detail: `Saldo disponível na unidade: ${quantity} un.` };
+  if ((balance?.largestWarehouse ?? 0) >= requested) return { ready: true, label: "Disponível em estoque", tone: "active",
+    detail: `Saldo disponível ${byContract ? "no contrato" : "na unidade"}: ${quantity} un.` };
   if (quantity >= requested) return { ready: false, label: "Saldo dividido entre contratos", tone: "deadline-warning",
     detail: "Transfira ou reponha o saldo para atender o pedido em um único contrato." };
   return {

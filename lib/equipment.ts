@@ -15,16 +15,20 @@ export const retirementLabels: Record<RetirementReason, string> = {
   OTHER: "Outro motivo",
 };
 
-export function latestByItem<T extends { equipmentId: string }>(deliveries: T[]) {
+type DeliveredItem = { equipmentId: string; warehouseId?: string | null; historicalContractId?: string | null; contractNumber?: string | null };
+
+export function latestByItem<T extends DeliveredItem>(deliveries: T[]) {
   const seen = new Set<string>();
   return deliveries.filter((row) => {
-    if (seen.has(row.equipmentId)) return false;
-    seen.add(row.equipmentId);
+    const contract = row.warehouseId ?? row.historicalContractId;
+    const key = JSON.stringify([row.equipmentId, contract ?? null, contract ? null : row.contractNumber ?? null]);
+    if (seen.has(key)) return false;
+    seen.add(key);
     return true;
   });
 }
 
-export function itemsInUse<T extends { equipmentId: string; quantity: number; returnedQuantity: number; retirement: object | null }>(deliveries: T[]) {
+export function itemsInUse<T extends DeliveredItem & { quantity: number; returnedQuantity: number; retirement: object | null }>(deliveries: T[]) {
   const latest = new Set(latestByItem(deliveries));
   return deliveries.filter((row) => !row.retirement && row.returnedQuantity < row.quantity && (latest.has(row) || row.returnedQuantity > 0));
 }

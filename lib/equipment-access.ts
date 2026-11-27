@@ -2,7 +2,7 @@ import "server-only";
 import type { Prisma } from "@/generated/prisma/client";
 import { canAdminister, type AccessScope } from "./auth";
 import { db } from "./db";
-import { employeesWhere, unitsWhere } from "./directory";
+import { employeesWhere, managedContracts, unitsWhere } from "./directory";
 
 export const handlesStock = (scope: AccessScope) => canAdminister(scope) || scope.role === "MANAGER" ||
   scope.role === "WAREHOUSE" || (scope.role === "SUPERVISOR" && scope.employee?.active === true);
@@ -27,11 +27,18 @@ export function personalDeliveryWhere(scope: AccessScope) {
 
 export function operationalDeliveryWhere(scope: AccessScope): Prisma.DeliveryWhereInput {
   const unit = unitsWhere(scope);
+  if (scope.role === "SUPERVISOR") return {
+    companyId: scope.companyId, voidedAt: null,
+    OR: [
+      { warehouseId: { in: managedContracts(scope) } },
+      { historicalContractId: { in: managedContracts(scope) } },
+    ],
+  };
   return {
     companyId: scope.companyId,
     voidedAt: null,
-    OR: [{ stock: { warehouse: { unit } } }, { warehouseId: null, employee: { unit } }],
-    ...(scope.role === "SUPERVISOR" ? { employee: employeesWhere(scope) } : {}),
+    OR: [{ stock: { warehouse: { unit } } }, { historicalContract: { unit } },
+      { warehouseId: null, historicalContractId: null, employee: { unit } }],
   };
 }
 
@@ -53,6 +60,11 @@ export function requestWhere(scope: AccessScope): Prisma.EquipmentRequestWhereIn
   return {
     companyId,
     unit: unitsWhere(scope),
-    ...(scope.role === "SUPERVISOR" ? { employee: employeesWhere(scope) } : {}),
+    ...(scope.role === "SUPERVISOR" ? { OR: [
+      ...managedContracts(scope).map((id) => ({ contractId: id, employee: {
+        OR: [{ contractId: id }, { contractLinks: { some: { warehouseId: id } } }],
+      } })),
+      { contractId: null, employee: { ...employeesWhere(scope), contractId: { in: managedContracts(scope) }, contractLinks: { none: {} } } },
+    ] } : {}),
   };
 }

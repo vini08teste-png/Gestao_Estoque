@@ -914,9 +914,12 @@ test("administrador corrige e apaga entregas com auditoria e saldo consistente",
   const key = { companyId, warehouseId, lotId: lot.id };
   await db.stock.create({ data: { ...key, quantity: 8 } });
   const balance = async () => (await db.stock.findUniqueOrThrow({ where: { companyId_warehouseId_lotId: key } })).quantity;
-  await page.goto("/tsa/entregas?edit=novo");
-  await page.getByRole("combobox", { name: "Colaborador" }).selectOption(scenario.worker.id);
-  await page.getByRole("combobox", { name: "Número do contrato" }).selectOption(warehouseId);
+  await page.goto("/tsa/colaboradores");
+  const employeeRow = page.getByRole("row").filter({ hasText: scenario.worker.registration.toUpperCase() });
+  await employeeRow.getByRole("button", { name: `Ações de ${scenario.worker.name}` }).click();
+  await employeeRow.getByRole("link", { name: `Registrar entrega para ${scenario.worker.name}` }).click();
+  await expect(page.getByRole("combobox", { name: "Colaborador" })).toHaveValue(scenario.worker.id);
+  await expect(page.getByRole("combobox", { name: "Número do contrato" })).toHaveValue(warehouseId);
   await page.getByRole("combobox", { name: "Item", exact: true }).selectOption(item.id);
   await page.getByLabel("Quantidade").fill("3");
   await page.getByRole("button", { name: "Salvar", exact: true }).click();
@@ -1172,13 +1175,13 @@ test("Equipe filtra pendências e diferencia validades e configuração de itens
     category: "EPI", certificate: "12345", caExpiresAt: new Date("2030-01-01"),
   } });
   const lot = await db.equipmentLot.create({ data: { companyId, equipmentId: item.id, code: "EQUIPE", expiresAt: new Date("2025-02-25") } });
-  const balance = { companyId, warehouseId: scenario.warehouse.id, lotId: lot.id };
+  const balance = { companyId, warehouseId: teamContract.id, lotId: lot.id };
   await db.stock.create({ data: balance });
   await db.delivery.createMany({ data: ["2025-02-20", "2025-02-21"].map((date) => ({
     ...balance, id: randomUUID(), employeeId: person.id, equipmentId: item.id, actorId: scenario.operator.id, quantity: 1, deliveredAt: new Date(date),
   })) });
   await db.equipmentRequest.create({ data: {
-    companyId, id: randomUUID(), employeeId: person.id, unitId: person.unitId, equipmentId: item.id,
+    companyId, id: randomUUID(), employeeId: person.id, unitId: person.unitId, contractId: teamContract.id, equipmentId: item.id,
     quantity: 1, reason: "Pedido para teste de equipe.", status: "WAITING_DELIVERY",
   } });
 
