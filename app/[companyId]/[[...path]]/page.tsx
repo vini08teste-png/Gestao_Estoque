@@ -333,7 +333,7 @@ export default async function CompanyPage({ params, searchParams }: {
   const { companyId, path = [] } = await params;
   if (!isCompany(companyId) || path.length > 1) notFound();
   const section = (path[0] ?? "dashboard") as Section;
-  if (!Object.hasOwn(sections, section)) notFound();
+  if (!Object.hasOwn(sections, section) || section === "manutencao") notFound();
   const { scope, viewer } = await requireScope(companyId);
   const search = await searchParams;
   const edit = typeof search.edit === "string" ? search.edit : "";

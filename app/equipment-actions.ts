@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { notFound, redirect } from "next/navigation";
 import { Prisma } from "@/generated/prisma/client";
 import type { ItemCategory, RetirementReason } from "@/generated/prisma/enums";
+import { requireMaintenanceAccess } from "@/lib/admin-maintenance-access";
 import { canAdminister, requireScope, type AccessScope } from "@/lib/auth";
 import { attachmentLimit, replacementPhotoTypes } from "@/lib/attachment-limits";
 import { db } from "@/lib/db";
@@ -13,6 +14,7 @@ import { canSetStockMinimum, deliveryCorrectionFields, handlesStock, hasPersonal
 import { brazilDay, jobTitleKey, retirementLabels, todayInBrazil } from "@/lib/equipment";
 import { text, type FormResult } from "@/lib/forms";
 import { finishSave } from "@/lib/form-navigation";
+import { planHistoryImport, readHistoryImport, type HistoryImportResult } from "@/lib/history-import";
 import { contractNumberLabel } from "@/lib/organization";
 import { receiptHash, receiptPreview, receiptTerm } from "@/lib/receipt-signature";
 import { availableLotWhere } from "@/lib/stock-availability";
@@ -458,6 +460,60 @@ export async function registerDelivery(companyId: string, id: string, requestId:
   if (paper) return { success: "Entrega anterior registrada." };
   if (data.get("continue") === "on" && !requestId) return { success: "Entrega registrada e saldo atualizado." };
   redirect(`/${companyId}/entregas?registrada=1`);
+}
+
+export async function importDeliveryHistory(companyId: string, _: HistoryImportResult, data: FormData): Promise<HistoryImportResult> {
+  await requireMaintenanceAccess(companyId);
+  const source = text(data, "source");
+  const unitId = text(data, "unit");
+  const contractId = text(data, "contract");
+  const entries = readHistoryImport(source);
+  if (typeof entries === "string") return { error: entries };
+
+  if (data.get("operation") !== "import") {
+    const result = await db.$transaction((tx) => planHistoryImport(tx, companyId, unitId, contractId, entries),
+      { isolationLevel: "RepeatableRead" });
+    if (typeof result === "string") return { error: result };
+    return { preview: { source, unitId, contractId, rows: result.plan.map(({ row }) => row), checksum: result.checksum } };
+  }
+
+  let createdEmployees = 0;
+  let createdDeliveries = 0;
+  const result = await mutate(companyId, canAdminister, async (tx, _, actorId) => {
+    const current = await planHistoryImport(tx, companyId, unitId, contractId, entries);
+    if (typeof current === "string") return invalid(current);
+    if (current.checksum !== text(data, "checksum")) return invalid("Os dados mudaram. Gere uma nova prévia antes de importar.");
+    if (current.plan.some(({ row }) => row.status === "error")) return invalid("Corrija as pendências antes de importar.");
+    const people = new Map<string, string>();
+    const deliveries: Prisma.DeliveryCreateManyInput[] = [];
+    for (const { entry, employeeId, equipmentId, deliveryId } of current.plan) {
+      if (!entry || !equipmentId || !deliveryId) continue;
+      let personId = employeeId ?? people.get(entry.registration);
+      if (!personId) {
+        const person = await tx.employee.create({
+          data: { companyId, unitId, contractId: contractId || null,
+            registration: entry.registration, name: entry.name, jobTitle: entry.jobTitle },
+          select: { id: true },
+        });
+        personId = person.id;
+        people.set(entry.registration, personId);
+        createdEmployees++;
+      }
+      deliveries.push({ companyId, id: deliveryId, equipmentId, employeeId: personId, actorId,
+        quantity: entry.quantity, deliveredAt: parseDay(entry.date), contractNumber: current.contractNumber });
+    }
+    if (!deliveries.length) return;
+    await tx.delivery.createMany({ data: deliveries });
+    await tx.deliveryReceipt.createMany({
+      data: deliveries.map(({ id }) => ({ companyId, deliveryId: id, actorId, historical: true })),
+    });
+    await tx.equipmentEvent.createMany({
+      data: deliveries.map(({ id }) => ({ companyId, subjectId: id, actorId, kind: "PAPER_RECORDED" })),
+    });
+    createdDeliveries = deliveries.length;
+  });
+  if (!result.success) return result;
+  return { success: `Entregas importadas: ${createdDeliveries}. Colaboradores cadastrados: ${createdEmployees}.` };
 }
 
 async function restoreDeliveryStock(tx: Prisma.TransactionClient, companyId: string, warehouseId: string, deliveryId: string,
