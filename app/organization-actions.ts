@@ -217,6 +217,15 @@ export async function saveUser(companyId: string, id: string | null, _: FormResu
   return finishSave(result, data, `/${companyId}/usuarios`);
 }
 
+export async function removeUserAccess(companyId: string, userId: string, _: FormResult) {
+  const result = await save(companyId, async (tx, actor) => {
+    if (actor === userId) throw new FormError("Outro administrador precisa remover o seu acesso.");
+    await tx.userScope.delete({ where: { companyId_userId: { companyId, userId } } });
+  });
+  if (result.success) redirect(`/${companyId}/usuarios?resultado=apagado`);
+  return result;
+}
+
 export async function resetUserPassword(companyId: string, userId: string, _: FormResult, data: FormData) {
   return save(companyId, async (tx, actor) => {
     if (actor === userId) throw new FormError("Use Trocar senha no menu da sua conta.");

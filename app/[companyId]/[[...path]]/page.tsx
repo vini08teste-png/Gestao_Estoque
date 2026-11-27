@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
-import { grantSupervisorAccess, removeEmployee, resetUserPassword, saveCompany, saveEmployee, saveUnit, saveUser } from "@/app/organization-actions";
+import { grantSupervisorAccess, removeEmployee, removeUserAccess, resetUserPassword, saveCompany, saveEmployee, saveUnit, saveUser } from "@/app/organization-actions";
 import { AccessScopeFields } from "@/components/access-scope-fields";
 import { ActionForm } from "@/components/action-form";
 import { Catalog, Deliveries, ExpectedItems, Inventory, Requests, Rules } from "@/components/equipment-pages";
@@ -249,12 +249,29 @@ async function Employees({ scope, edit, supervisorAccess, query, status, filters
   );
 }
 
-async function Users({ scope, edit, viewerId, profile, employeeId }: {
-  scope: AccessScope; edit: string; viewerId: string; profile?: Role; employeeId: string;
+async function Users({ scope, edit, viewerId, profile, employeeId, remove, removed }: {
+  scope: AccessScope; edit: string; viewerId: string; profile?: Role; employeeId: string; remove: string; removed: boolean;
 }) {
   const companyId = scope.companyId;
   const base = `/${companyId}/usuarios`;
   if (!canAdminister(scope)) notFound();
+  if (remove) {
+    if (remove === viewerId) notFound();
+    const current = await db.userScope.findUnique({
+      where: { companyId_userId: { companyId, userId: remove } },
+      select: { name: true, role: true, user: { select: { email: true } } },
+    });
+    if (!current) notFound();
+    return <>
+      <Heading title="Acessos e perfis" description={scope.company.name} />
+      <Editor title="Apagar acesso" base={base}>
+        <ActionForm action={removeUserAccess.bind(null, companyId, remove)} label="Confirmar exclusão do acesso" destructive>
+          <p><strong>{current.name}</strong> · {current.user.email} · {roles[current.role]}</p>
+          <p>Esta conta perderá o acesso a {scope.company.name}. O cadastro do colaborador, o histórico e os acessos a outras empresas serão preservados.</p>
+        </ActionForm>
+      </Editor>
+    </>;
+  }
   if (edit) {
     const [current, units, employees] = await Promise.all([
       edit === "novo" ? null : db.userScope.findUnique({
@@ -318,6 +335,7 @@ async function Users({ scope, edit, viewerId, profile, employeeId }: {
     <>
       <Heading title="Acessos e perfis" description={scope.company.name}
         action={<Link className="button primary" href={`${base}?edit=novo${profile ? `&perfil=${profile}` : ""}`}>Novo acesso</Link>} />
+      {removed && <p className="feedback success operation-feedback" role="status">Acesso apagado.</p>}
       <details className="panel access-guide">
         <summary>Como atribuir perfis e permissões</summary>
         <div className="access-guide-content">
@@ -333,11 +351,14 @@ async function Users({ scope, edit, viewerId, profile, employeeId }: {
           <option value="">Todos os perfis</option>{Object.entries(roles).map(([id, label]) => <option key={id} value={id}>{label}</option>)}
         </select></label><button className="button" type="submit">Filtrar</button>
       </form>
-      <Table label="Acessos e perfis" columns={["Nome", "E-mail de login", "Perfil", "Unidades", "Situação", "Ação"]}
+      <Table label="Acessos e perfis" columns={["Nome", "E-mail de login", "Perfil", "Unidades", "Situação", "Ações"]}
         rows={users.map((user) => [user.userId, user.name, user.user.email, roles[user.role],
           user.allUnits ? "Todas" : user.role === "EMPLOYEE" || user.role === "SUPERVISOR" ? user.employee?.unit.name ?? "—" :
             (user.units.map(({ unit }) => unit.name).sort().join(", ") || "—"),
-          <Status active={user.active} />, <EditLink base={base} id={user.userId} label={user.name} />])} />
+          <Status active={user.active} />, <RowActions id={`access-actions-${user.userId}`} label={`Ações de ${user.name}`}>
+            <EditLink base={base} id={user.userId} label={user.name} />
+            {user.userId !== viewerId && <Link className="text-action danger" href={`${base}?apagar=${encodeURIComponent(user.userId)}`}>Apagar acesso</Link>}
+          </RowActions>])} />
     </>
   );
 }
@@ -376,6 +397,7 @@ export default async function CompanyPage({ params, searchParams }: {
     colaboradores: <Employees scope={scope} edit={edit} query={query} status={status} viewerId={viewer.id}
       supervisorAccess={typeof search.encarregado === "string" ? search.encarregado : ""} filters={search} />,
     usuarios: <Users scope={scope} edit={edit} viewerId={viewer.id}
+      remove={typeof search.apagar === "string" ? search.apagar : ""} removed={search.resultado === "apagado"}
       profile={typeof search.perfil === "string" && Object.hasOwn(roles, search.perfil) ? search.perfil as Role : undefined}
       employeeId={typeof search.colaborador === "string" ? search.colaborador : ""} />,
     empresa: <Company scope={scope} />,
